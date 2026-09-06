@@ -1,0 +1,5 @@
+---
+# ssh_user_keygen defaults
+# main_user: required — user to generate keys for
+# user_ssh_key_type: standard  # key type identifier
+# ssh_key_store_dir: undefined — if set, keys are saved to this directory on the controller

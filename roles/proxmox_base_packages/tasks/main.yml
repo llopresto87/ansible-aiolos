@@ -1,0 +1,11 @@
+---
+- name: Perform dist upgrade
+  ansible.builtin.apt:
+    update_cache: true
+    upgrade: dist
+
+- name: Install Proxmox base packages
+  ansible.builtin.apt:
+    name: "{{ proxmox_base_packages_proxmox_base_packages }}"
+    state: present
+    update_cache: true

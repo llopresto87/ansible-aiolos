@@ -1,0 +1,11 @@
+---
+# VM inventory - example configuration.
+# Each group maps to a group_vars/<group>.yaml VM contract
+# (copy app_vm.example.yaml / pve_node.example.yaml to get started).
+# ansible_host points at the Proxmox node that runs the VM.
+all:
+  children:
+    app_vm:
+      hosts:
+        app-vm:
+          ansible_host: pve0.example.lan

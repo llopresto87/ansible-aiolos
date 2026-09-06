@@ -1,0 +1,24 @@
+---
+- name: "Run guest post-provision tasks: install base packages"
+  ansible.builtin.include_role:
+    name: guest_base_packages
+  when:
+    - 'proxmox_vm_provision_proxmox_vm.post_provision.install_base_packages | default(false)'
+
+- name: "Run guest post-provision tasks: install docker engine"
+  ansible.builtin.include_role:
+    name: guest_docker_engine
+  when:
+    - 'proxmox_vm_provision_proxmox_vm.post_provision.install_docker | default(false)'
+
+- name: "Run guest post-provision tasks: distribute local CA trust"
+  ansible.builtin.include_role:
+    name: local_ca_distribute
+  when:
+    - 'proxmox_vm_provision_proxmox_vm.post_provision.distribute_local_ca | default(true)'
+
+- name: "Run guest post-provision tasks: deploy compose projects"
+  ansible.builtin.include_role:
+    name: guest_compose_deploy
+  when:
+    - 'proxmox_vm_provision_proxmox_vm.post_provision.deploy_compose | default(false)'

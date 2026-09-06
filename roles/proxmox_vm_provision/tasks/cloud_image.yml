@@ -1,0 +1,74 @@
+---
+# Import a cloud image as the VM boot disk (virtio0).
+# Triggered when proxmox_vm_provision_proxmox_vm.cloud_image is defined.
+# Runs on the Proxmox node via SSH (overrides connection: local default).
+
+- name: Set cloud image variables
+  ansible.builtin.set_fact:
+    _ci_url: "{{ proxmox_vm_provision_proxmox_vm.cloud_image.url }}"
+    _ci_storage: "{{ proxmox_vm_provision_proxmox_vm.cloud_image.storage | default('local') }}"
+    _ci_disk_size: "{{ proxmox_vm_provision_proxmox_vm.cloud_image.disk_size | default(omit) }}"
+    _ci_vmid: "{{ proxmox_vm_provision_target_vmid }}"
+    _ci_cache_dir: "{{ proxmox_vm_provision_cloud_image_dir }}"
+
+- name: Ensure cloud image cache directory exists
+  ansible.builtin.file:
+    path: "{{ _ci_cache_dir }}"
+    state: directory
+    mode: "0755"
+  vars:
+    ansible_connection: ssh
+
+- name: Download cloud image (cached by filename)
+  ansible.builtin.get_url:
+    url: "{{ _ci_url }}"
+    dest: "{{ _ci_cache_dir }}/{{ _ci_url | basename }}"
+    mode: "0644"
+  register: _ci_download
+  vars:
+    ansible_connection: ssh
+
+- name: Check if VM already has a boot disk attached
+  ansible.builtin.shell:
+    cmd: "set -o pipefail && qm config {{ _ci_vmid }} | grep -q '^virtio0:'"
+    executable: /bin/bash
+  register: _ci_disk_check
+  failed_when: false
+  changed_when: false
+  vars:
+    ansible_connection: ssh
+
+- name: Import cloud image as VM disk
+  ansible.builtin.command:
+    cmd: >-
+      qm disk import {{ _ci_vmid }}
+      {{ _ci_cache_dir }}/{{ _ci_url | basename }}
+      {{ _ci_storage }}
+  when: _ci_disk_check.rc != 0
+  register: _ci_import
+  changed_when: _ci_import.rc == 0
+  vars:
+    ansible_connection: ssh
+
+- name: Attach imported disk as virtio0
+  ansible.builtin.command:
+    cmd: >-
+      qm set {{ _ci_vmid }}
+      --virtio0 {{ _ci_storage }}:{{ _ci_vmid }}/vm-{{ _ci_vmid }}-disk-0.raw
+      --boot order=virtio0;sata0;net0
+  when: _ci_disk_check.rc != 0
+  changed_when: true
+  vars:
+    ansible_connection: ssh
+
+- name: Resize boot disk to requested size
+  ansible.builtin.command:
+    cmd: "qm disk resize {{ _ci_vmid }} virtio0 {{ _ci_disk_size }}"
+  register: _ci_resize
+  changed_when: "'image resized' in (_ci_resize.stdout | default('') | lower)"
+  when:
+    - _ci_disk_check.rc != 0
+    - _ci_disk_size is defined
+    - _ci_disk_size | default('') | length > 0
+  vars:
+    ansible_connection: ssh

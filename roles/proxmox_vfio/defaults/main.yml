@@ -1,0 +1,8 @@
+---
+proxmox_vfio_enabled: false
+proxmox_vfio_modules:
+  - vfio
+  - vfio_iommu_type1
+  - vfio_pci
+proxmox_vfio_proxmox_grub_cmdline_linux_default: >-
+  quiet iommu=pt intel_iommu=on mitigations=off

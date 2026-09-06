@@ -1,0 +1,12 @@
+---
+version: '3.8'
+services:
+  nginx_proxy:
+    image: 'nginx:1.27-alpine'
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./certs:/etc/nginx/certs:ro

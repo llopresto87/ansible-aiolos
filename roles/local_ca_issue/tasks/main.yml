@@ -1,0 +1,141 @@
+---
+- name: Bootstrap local CA artifacts for leaf issuance
+  ansible.builtin.include_role:
+    name: local_ca_bootstrap
+  run_once: true
+  when:
+    - local_ca_issue_enabled | bool
+    - local_ca_issue_run_bootstrap | bool
+
+- name: Validate local CA issue contract
+  ansible.builtin.assert:
+    that:
+      - local_ca_issue_domains | length > 0
+      - local_ca_issue_target_directory | length > 0
+    fail_msg: >-
+      local_ca_issue requires local_ca_issue_domains[] and
+      local_ca_issue_target_directory when enabled.
+  when: local_ca_issue_enabled | bool
+
+- name: Build SAN value for local leaf certificate
+  ansible.builtin.set_fact:
+    local_ca_issue_san_value: >-
+      {{ local_ca_issue_domains
+      | map('regex_replace', '^', 'DNS:')
+      | join(',') }}
+  when: local_ca_issue_enabled | bool
+
+- name: Ensure local CA issue storage directory exists
+  ansible.builtin.file:
+    path: "{{ local_ca_issue_storage_dir }}"
+    state: directory
+    mode: "0700"
+  delegate_to: localhost
+  become: false
+  when: local_ca_issue_enabled | bool
+
+- name: Remove existing leaf artifacts when rotation is requested
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - "{{ local_ca_issue_leaf_key_path }}"
+    - "{{ local_ca_issue_leaf_csr_path }}"
+    - "{{ local_ca_issue_leaf_cert_path }}"
+    - "{{ local_ca_issue_leaf_san_path }}"
+  delegate_to: localhost
+  become: false
+  when:
+    - local_ca_issue_enabled | bool
+    - local_ca_issue_force_rotate | bool
+
+- name: Generate local leaf private key
+  community.crypto.openssl_privatekey:
+    path: "{{ local_ca_issue_leaf_key_path }}"
+    type: RSA
+    size: "{{ local_ca_issue_key_size }}"
+    mode: "0600"
+  delegate_to: localhost
+  become: false
+  when:
+    - local_ca_issue_enabled | bool
+    - not ansible_check_mode
+
+- name: Generate local leaf CSR
+  community.crypto.openssl_csr_pipe:
+    privatekey_path: "{{ local_ca_issue_leaf_key_path }}"
+    common_name: "{{ local_ca_issue_domains | first }}"
+    subject_alt_name: "{{ local_ca_issue_san_value.split(',') }}"
+  register: local_ca_issue_leaf_csr
+  delegate_to: localhost
+  become: false
+  when:
+    - local_ca_issue_enabled | bool
+    - not ansible_check_mode
+
+- name: Sign local leaf certificate with local CA
+  community.crypto.x509_certificate:
+    path: "{{ local_ca_issue_leaf_cert_path }}"
+    csr_content: "{{ local_ca_issue_leaf_csr.csr }}"
+    ownca_path: "{{ local_ca_issue_root_cert_path }}"
+    ownca_privatekey_path: "{{ local_ca_issue_root_key_path }}"
+    provider: ownca
+    ownca_not_after: "+{{ local_ca_issue_days }}d"
+    ownca_digest: sha256
+    mode: "0644"
+  delegate_to: localhost
+  become: false
+  when:
+    - local_ca_issue_enabled | bool
+    - not ansible_check_mode
+
+- name: Set local leaf key permissions
+  ansible.builtin.file:
+    path: "{{ local_ca_issue_leaf_key_path }}"
+    mode: "0600"
+  delegate_to: localhost
+  become: false
+  when:
+    - local_ca_issue_enabled | bool
+    - not ansible_check_mode
+
+- name: Set local leaf cert permissions
+  ansible.builtin.file:
+    path: "{{ local_ca_issue_leaf_cert_path }}"
+    mode: "0644"
+  delegate_to: localhost
+  become: false
+  when:
+    - local_ca_issue_enabled | bool
+    - not ansible_check_mode
+
+- name: Ensure target certificate directory exists
+  ansible.builtin.file:
+    path: "{{ local_ca_issue_target_directory }}"
+    state: directory
+    owner: "{{ local_ca_issue_target_owner }}"
+    group: "{{ local_ca_issue_target_group }}"
+    mode: "0755"
+  when: local_ca_issue_enabled | bool
+
+- name: Deploy local leaf certificate to target host
+  ansible.builtin.copy:
+    src: "{{ local_ca_issue_leaf_cert_path }}"
+    dest: "{{ local_ca_issue_target_cert_path }}"
+    owner: "{{ local_ca_issue_target_owner }}"
+    group: "{{ local_ca_issue_target_group }}"
+    mode: "0644"
+  when:
+    - local_ca_issue_enabled | bool
+    - not ansible_check_mode
+
+- name: Deploy local leaf private key to target host
+  ansible.builtin.copy:
+    src: "{{ local_ca_issue_leaf_key_path }}"
+    dest: "{{ local_ca_issue_target_key_path }}"
+    owner: "{{ local_ca_issue_target_owner }}"
+    group: "{{ local_ca_issue_target_group }}"
+    mode: "0600"
+  when:
+    - local_ca_issue_enabled | bool
+    - not ansible_check_mode

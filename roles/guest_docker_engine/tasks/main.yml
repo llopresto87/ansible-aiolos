@@ -1,0 +1,10 @@
+---
+- name: Resolve OS family
+  ansible.builtin.set_fact:
+    guest_docker_engine_resolved_os_family: >-
+      {{ ansible_os_family
+         | default(os | default('Debian') | capitalize) }}
+
+- name: Include OS-specific docker engine tasks
+  ansible.builtin.include_tasks: "{{ guest_docker_engine_resolved_os_family | lower }}.yml"
+  when: install_docker | default(false) | bool

@@ -1,0 +1,4 @@
+---
+# guest_base_packages defaults
+# OS family is auto-detected; override with 'os' variable if needed
+# guest_base_packages_resolved_os_family: Debian

@@ -1,0 +1,28 @@
+#cloud-config
+{%- if proxmox_vm_provision_proxmox_vm.ciuser is defined %}
+users:
+  - name: {{ proxmox_vm_provision_proxmox_vm.ciuser }}
+    gecos: Ansible User
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    shell: /bin/bash
+    lock_passwd: false
+    {%- if proxmox_vm_provision_proxmox_vm.cipassword is defined %}
+    passwd: "{{ proxmox_vm_provision_proxmox_vm.cipassword }}"
+    {%- endif %}
+{%- endif %}
+
+ssh_authorized_keys:
+{%- if proxmox_vm_provision_ssh_public_key_path_resolved is defined and (proxmox_vm_provision_ssh_public_key_path_resolved | length) > 0 %}
+  - {{ lookup('file', proxmox_vm_provision_ssh_public_key_path_resolved) }}
+{%- endif %}
+
+package_update: true
+packages:
+{%- for pkg in proxmox_vm_provision_proxmox_vm.cloud_init_user_data.packages | default([]) %}
+  - {{ pkg }}
+{%- endfor %}
+
+runcmd:
+{%- for cmd in proxmox_vm_provision_proxmox_vm.cloud_init_user_data.runcmd | default([]) %}
+  - {{ cmd }}
+{%- endfor %}

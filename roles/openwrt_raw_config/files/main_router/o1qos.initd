@@ -1,0 +1,235 @@
+#!/bin/sh /etc/rc.common
+# o1qos - Drop-in CAKE/IFB enforcer driven by /etc/config/sqm
+# - Reads SQM via UCI (robust)
+# - Sets up IFB ingress shaping + CAKE egress shaping
+# - Orchestrates l7v3 helper (NOT an independent service)
+
+START=50
+STOP=10
+USE_PROCD=1
+
+. /lib/functions.sh
+. /lib/functions/service.sh
+
+PROG="o1qos"
+SQM_CFG="sqm"
+LOCK="/var/lock/${PROG}.lock"
+
+L7V3="/etc/init.d/l7v3"   # keep the name; this is now a helper script (not rc.common)
+
+log()  { logger -t "$PROG" -- "$*"; }
+warn() { logger -t "$PROG" -p user.warn -- "$*"; }
+err()  { logger -t "$PROG" -p user.err  -- "$*"; }
+
+need_cmd() { command -v "$1" >/dev/null 2>&1 || { err "Missing required command: $1"; return 1; }; }
+dev_exists(){ ip link show dev "$1" >/dev/null 2>&1; }
+
+sanitize_ifb() {
+    # Linux ifname limit is 15 chars; keep stable mapping.
+    local s
+    s="$(echo "$1" | tr '.:/ @' '_____' )"
+    echo "ifb_${s}" | cut -c1-15
+}
+
+mod_load() {
+    modprobe sch_cake 2>/dev/null
+    modprobe ifb 2>/dev/null
+    modprobe act_mirred 2>/dev/null
+    modprobe sch_ingress 2>/dev/null
+    modprobe clsact 2>/dev/null
+    modprobe cls_matchall 2>/dev/null
+    modprobe cls_u32 2>/dev/null
+}
+
+ensure_ifb() {
+    local ifb="$1"
+    dev_exists "$ifb" || ip link add name "$ifb" type ifb 2>/dev/null
+    ip link set dev "$ifb" up 2>/dev/null
+}
+
+tc_clear_dev() {
+    local dev="$1"
+    tc qdisc del dev "$dev" root    2>/dev/null
+    tc qdisc del dev "$dev" clsact  2>/dev/null
+    tc qdisc del dev "$dev" ingress 2>/dev/null
+    tc filter del dev "$dev" ingress 2>/dev/null
+}
+
+apply_ingress_redirect() {
+    local wan="$1"
+    local ifb="$2"
+
+    # Prefer clsact + matchall; fallback to ingress/u32
+    tc qdisc replace dev "$wan" clsact 2>/dev/null || {
+        tc qdisc replace dev "$wan" handle ffff: ingress 2>/dev/null || return 1
+    }
+
+    tc filter del dev "$wan" ingress 2>/dev/null
+
+    tc filter add dev "$wan" ingress prio 10 matchall \
+        action mirred egress redirect dev "$ifb" 2>/dev/null && return 0
+
+    tc filter add dev "$wan" parent ffff: protocol ip prio 10 u32 match u32 0 0 \
+        action mirred egress redirect dev "$ifb" 2>/dev/null && return 0
+
+    return 1
+}
+
+apply_cake_root() {
+    local dev="$1"
+    local bw="$2"        # e.g. 100000kbit
+    local rtt="$3"       # e.g. 5ms
+    local overhead="$4"
+    local mpu="$5"
+    local is_ifb="$6"    # 1 for IFB(download), 0 for WAN(upload)
+
+    local base="rtt ${rtt} diffserv8 nowash triple-isolate nat split-gso"
+    [ -n "$mpu" ] && base="${base} mpu ${mpu}"
+    [ -n "$overhead" ] && base="${base} overhead ${overhead}"
+
+    if [ "$is_ifb" = "1" ]; then
+        # DOWNLOAD (IFB): adaptive for cellular, ingress mode
+        # autorate-ingress is designed for variable links like cellular [1](https://help.mikrotik.com/docs/spaces/ROS/pages/196345874/CAKE)
+        # ingress is the proper downlink-shaping mode [1](https://help.mikrotik.com/docs/spaces/ROS/pages/196345874/CAKE)
+        tc qdisc replace dev "$dev" root cake ingress autorate-ingress bandwidth "${bw}" ${base} || return 1
+    else
+        # UPLOAD (WAN): fixed bandwidth, ACK filtering
+        tc qdisc replace dev "$dev" root cake bandwidth "${bw}" ${base} ack-filter-aggressive || return 1
+    fi
+
+    return 0
+}
+# global list of shaped devices (for l7v3)
+SHAPED_DEVS=""
+
+remember_dev() {
+    # deduplicate
+    local d="$1"
+    echo " $SHAPED_DEVS " | grep -q " $d " || SHAPED_DEVS="$SHAPED_DEVS $d"
+}
+
+apply_queue_section() {
+    local section="$1"
+
+    local enabled iface download upload overhead mpu itarget
+
+    config_get enabled  "$section" enabled  "0"
+    [ "$enabled" = "1" ] || { log "SQM queue '$section' disabled; skipping"; return 0; }
+
+    config_get iface    "$section" interface ""
+    [ -n "$iface" ] || { warn "SQM queue '$section' missing option interface; skipping"; return 0; }
+
+    dev_exists "$iface" || { warn "Interface '$iface' not present; skipping '$section'"; return 0; }
+
+    config_get download "$section" download ""
+    config_get upload   "$section" upload   ""
+    [ -n "$download" ] && [ -n "$upload" ] || { warn "Queue '$section': missing download/upload; skipping"; return 0; }
+
+    config_get overhead "$section" overhead "0"
+    config_get mpu      "$section" mpu      "64"
+    config_get itarget  "$section" itarget  "5"    # your preferred default behavior
+
+    local dl_bw="${download}kbit"
+    local ul_bw="${upload}kbit"
+    local rtt="${itarget}ms"
+
+    local ifb
+    ifb="$(sanitize_ifb "$iface")"
+
+    remember_dev "$iface"
+
+    log "Configuring CAKE: section='$section' iface='$iface' ifb='$ifb' dl='$dl_bw' ul='$ul_bw' rtt='$rtt' overhead='$overhead' mpu='$mpu'"
+
+    mod_load
+    ensure_ifb "$ifb"
+
+    tc_clear_dev "$iface"
+    tc_clear_dev "$ifb"
+
+    apply_ingress_redirect "$iface" "$ifb" || { err "Failed ingress redirect $iface -> $ifb"; return 1; }
+
+    apply_cake_root "$ifb"  "$dl_bw" "$rtt" "$overhead" "$mpu" "1" || { err "Failed CAKE on $ifb"; return 1; }
+    apply_cake_root "$iface" "$ul_bw" "$rtt" "$overhead" "$mpu" "0" || { err "Failed CAKE on $iface"; return 1; }
+
+    tc -s qdisc show dev "$iface" 2>/dev/null | logger -t "$PROG"
+    tc -s qdisc show dev "$ifb"   2>/dev/null | logger -t "$PROG"
+
+    log "Shaping active on '$iface' (UL) and '$ifb' (DL)."
+    return 0
+}
+
+start_service() {
+    need_cmd tc || return 1
+    need_cmd ip || return 1
+    need_cmd nft || warn "nft not found; DSCP marking disabled (l7v3 will fail)"
+    need_cmd logger || return 1
+
+    exec 9>"$LOCK"
+    flock -n 9 || { warn "Another instance is running; exiting"; return 0; }
+
+    SHAPED_DEVS=""
+
+    config_load "$SQM_CFG" || { err "Failed to load UCI config '$SQM_CFG'"; return 1; }
+
+    # Build list + configure shaping
+    config_foreach apply_queue_section queue
+
+    # Orchestrate l7v3 AFTER we know which devices we shaped (but BEFORE traffic matters)
+    # In practice this is fine because shaping is applied immediately; if you want strict ordering,
+    # move l7v3 start before apply_queue_section and pass the iface list collected in a first pass.
+    # For drop-in stability, current ordering is OK on restart. For boot, both occur quickly.
+    local devs="$SHAPED_DEVS"
+    dev_exists br-lan && devs="$devs br-lan"
+
+    if [ -x "$L7V3" ]; then
+        log "Starting l7v3 helper for devices: $devs"
+        "$L7V3" start $devs >/dev/null 2>&1 || warn "l7v3 start failed (continuing without DSCP marking)"
+    else
+        warn "l7v3 helper not executable at $L7V3; DSCP marking disabled."
+    fi
+
+    log "All SQM queue sections processed."
+}
+
+stop_service() {
+    need_cmd tc || return 0
+    need_cmd ip || return 0
+
+    # Stop l7v3 helper first (remove marking)
+    [ -x "$L7V3" ] && "$L7V3" stop >/dev/null 2>&1
+
+    config_load "$SQM_CFG" >/dev/null 2>&1 || return 0
+
+    local stop_one
+    stop_one() {
+        local section="$1"
+        local enabled iface
+        config_get enabled "$section" enabled "0"
+        [ "$enabled" = "1" ] || return 0
+        config_get iface "$section" interface ""
+        [ -n "$iface" ] || return 0
+
+        local ifb
+        ifb="$(sanitize_ifb "$iface")"
+
+        tc_clear_dev "$iface"
+        tc_clear_dev "$ifb"
+
+        ip link set dev "$ifb" down 2>/dev/null
+        ip link del dev "$ifb" 2>/dev/null
+
+        log "Cleared shaping for iface='$iface' and removed ifb='$ifb'."
+    }
+
+    config_foreach stop_one queue
+    log "Stopped all shaping."
+}
+
+reload_service() {
+    stop_service
+    start_service
+}
+
+service_triggers() {
+    procd_add_reload_trigger "$SQM_CFG"
+}

@@ -1,0 +1,14 @@
+---
+# openwrt_bootstrap defaults
+# All variables are expected from group_vars/host_vars:
+#
+# openwrt_device:
+#   hostname: OpenWrt
+#   factory_ip: 192.168.1.1
+#   ip_address: <target IP>
+#   netmask: 255.255.255.0
+#   role: router
+#   root_password: <vault-encrypted>
+#
+# openwrt_ssh:
+#   pub_key_path: files/ssh_keys/infrastructure.pub

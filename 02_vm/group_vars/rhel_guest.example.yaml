@@ -1,0 +1,24 @@
+# Example VM/LXC definitions for a RHEL-based guest
+# Copy into an inventory/group_vars file and adjust values.
+# Supported distros: RHEL, Rocky Linux, AlmaLinux
+# The 'os' variable acts as a fallback when ansible_os_family
+# facts are unavailable (e.g. pre-provision planning).
+
+---
+
+os: rhel
+
+main_user: deploy
+install_docker: true
+
+# Provisioning contract (adjust to match your environment)
+proxmox_vm_provision_proxmox_vm:
+  node: pve0
+  vmid: 200
+  name: rhel-guest-01
+  memory: 4096
+  cores: 2
+  post_provision:
+    install_base_packages: true
+    install_docker: true
+    deploy_compose: false

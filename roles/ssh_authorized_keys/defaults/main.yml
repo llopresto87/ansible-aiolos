@@ -1,0 +1,5 @@
+---
+# ssh_authorized_keys defaults
+# ssh_key_type: cluster
+# ssh_authorized_keys_ssh_key_name: derived from ssh_key_type
+ssh_authorized_keys_key_dir: "{{ playbook_dir }}/../files/ssh_keys"

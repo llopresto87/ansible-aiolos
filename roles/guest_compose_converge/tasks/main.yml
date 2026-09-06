@@ -1,0 +1,94 @@
+---
+- name: Resolve compose converge settings
+  ansible.builtin.set_fact:
+    guest_compose_converge_use_compose: >-
+      {{ use_compose | default(false) | bool }}
+    guest_compose_converge_compose_projects: >-
+      {{ compose_projects | default([]) }}
+
+- name: Validate compose converge contract
+  ansible.builtin.assert:
+    that:
+      - main_user is defined
+      - main_user | length > 0
+      - main_user != 'root'
+      - guest_compose_converge_compose_projects | length > 0
+    fail_msg: >-
+      main_user (non-root) and compose_projects[] are required when
+      use_compose is enabled.
+  when: guest_compose_converge_use_compose
+
+- name: Ensure compose execution user exists
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ main_user }}"
+  when: guest_compose_converge_use_compose
+
+- name: Read compose execution user groups
+  ansible.builtin.command:
+    argv:
+      - id
+      - -nG
+      - "{{ main_user }}"
+  register: guest_compose_converge_main_user_groups
+  changed_when: false
+  check_mode: false
+  when: guest_compose_converge_use_compose
+
+- name: Assert compose execution user is in docker group
+  ansible.builtin.assert:
+    that:
+      - "'docker' in guest_compose_converge_main_user_groups.stdout.split()"
+    fail_msg: >-
+      main_user {{ main_user }} must be in docker group before compose apply.
+  when: guest_compose_converge_use_compose
+
+- name: Wait for Docker socket
+  ansible.builtin.wait_for:
+    path: "{{ guest_compose_converge_docker_host | regex_replace('^unix://', '') }}"
+    state: present
+    timeout: 30
+  when: guest_compose_converge_use_compose
+
+- name: Validate Docker access as compose user
+  ansible.builtin.command:
+    argv:
+      - /bin/su
+      - -s
+      - /bin/sh
+      - -c
+      - docker --host {{ guest_compose_converge_docker_host }} info
+      - "{{ main_user }}"
+  register: guest_compose_converge_docker_access
+  changed_when: false
+  check_mode: false
+  when: guest_compose_converge_use_compose
+
+- name: Converge compose applications
+  ansible.builtin.command:
+    argv:
+      - /bin/su
+      - -s
+      - /bin/sh
+      - -c
+      - docker --host {{ guest_compose_converge_docker_host }} compose up -d
+      - "{{ main_user }}"
+    chdir: "/home/{{ main_user }}/{{ item.compose_directory }}"
+  register: guest_compose_converge_result
+  become: true
+  loop: "{{ guest_compose_converge_compose_projects }}"
+  vars:
+    guest_compose_converge_combined_output: >-
+      {{
+        (guest_compose_converge_result.stdout | default('')) ~
+        (guest_compose_converge_result.stderr | default(''))
+      }}
+  changed_when: >-
+    'Creating' in guest_compose_converge_combined_output or
+    'Recreating' in guest_compose_converge_combined_output or
+    'Starting' in guest_compose_converge_combined_output or
+    'Created' in guest_compose_converge_combined_output or
+    'Started' in guest_compose_converge_combined_output
+  when:
+    - guest_compose_converge_use_compose
+    - not ansible_check_mode

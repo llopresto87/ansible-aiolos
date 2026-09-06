@@ -1,0 +1,18 @@
+---
+- name: Validate bridge settings are defined
+  ansible.builtin.assert:
+    that:
+      - bridge_settings is defined
+      - bridge_settings.bridges is defined
+      - bridge_settings.bridges | length > 0
+    fail_msg: bridge_settings.bridges must be defined for network role
+
+- name: Deploy network interfaces configuration
+  ansible.builtin.template:
+    src: interfaces.j2
+    dest: /etc/network/interfaces
+    owner: root
+    group: root
+    mode: "0644"
+    backup: true
+  notify: Restart networking

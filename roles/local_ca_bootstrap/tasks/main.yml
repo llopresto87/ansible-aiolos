@@ -1,0 +1,103 @@
+---
+- name: Ensure local CA storage directory exists
+  ansible.builtin.file:
+    path: "{{ local_ca_bootstrap_storage_dir }}"
+    state: directory
+    mode: "0700"
+  delegate_to: localhost
+  become: false
+  run_once: true
+  when: local_ca_bootstrap_enabled | bool
+
+- name: Rotate local CA artifacts when requested
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - "{{ local_ca_bootstrap_key_path }}"
+    - "{{ local_ca_bootstrap_cert_path }}"
+  delegate_to: localhost
+  become: false
+  run_once: true
+  when:
+    - local_ca_bootstrap_enabled | bool
+    - local_ca_bootstrap_force_rotate | bool
+
+- name: Check if local CA private key exists
+  ansible.builtin.stat:
+    path: "{{ local_ca_bootstrap_key_path }}"
+  register: local_ca_bootstrap_key_stat
+  delegate_to: localhost
+  become: false
+  run_once: true
+  when: local_ca_bootstrap_enabled | bool
+
+- name: Check if local CA certificate exists
+  ansible.builtin.stat:
+    path: "{{ local_ca_bootstrap_cert_path }}"
+  register: local_ca_bootstrap_cert_stat
+  delegate_to: localhost
+  become: false
+  run_once: true
+  when: local_ca_bootstrap_enabled | bool
+
+- name: Fail when local CA artifacts are in partial state
+  ansible.builtin.assert:
+    that:
+      - (local_ca_bootstrap_key_stat.stat.exists | bool) == (local_ca_bootstrap_cert_stat.stat.exists | bool)
+    fail_msg: >-
+      local CA artifacts are in a partial state (key or cert missing).
+      Remove both files or set local_ca_bootstrap_force_rotate=true.
+  delegate_to: localhost
+  become: false
+  run_once: true
+  when:
+    - local_ca_bootstrap_enabled | bool
+    - not local_ca_bootstrap_force_rotate | bool
+
+- name: Generate local CA private key
+  community.crypto.openssl_privatekey:
+    path: "{{ local_ca_bootstrap_key_path }}"
+    type: RSA
+    size: "{{ local_ca_bootstrap_key_size }}"
+    mode: "0600"
+  delegate_to: localhost
+  become: false
+  run_once: true
+  when:
+    - local_ca_bootstrap_enabled | bool
+    - not ansible_check_mode
+    - local_ca_bootstrap_force_rotate | bool
+      or not (local_ca_bootstrap_key_stat.stat.exists | default(false) | bool)
+
+- name: Generate local CA CSR
+  community.crypto.openssl_csr_pipe:
+    privatekey_path: "{{ local_ca_bootstrap_key_path }}"
+    common_name: "{{ local_ca_bootstrap_subject | regex_replace('^/CN=', '') }}"
+  register: local_ca_bootstrap_csr
+  delegate_to: localhost
+  become: false
+  run_once: true
+  when:
+    - local_ca_bootstrap_enabled | bool
+    - not ansible_check_mode
+    - local_ca_bootstrap_force_rotate | bool
+      or not (local_ca_bootstrap_cert_stat.stat.exists | default(false) | bool)
+
+- name: Generate local CA certificate
+  community.crypto.x509_certificate:
+    path: "{{ local_ca_bootstrap_cert_path }}"
+    csr_content: "{{ local_ca_bootstrap_csr.csr }}"
+    privatekey_path: "{{ local_ca_bootstrap_key_path }}"
+    provider: selfsigned
+    selfsigned_not_after: "+{{ local_ca_bootstrap_days }}d"
+    selfsigned_digest: sha256
+    mode: "0644"
+  delegate_to: localhost
+  become: false
+  run_once: true
+  when:
+    - local_ca_bootstrap_enabled | bool
+    - not ansible_check_mode
+    - local_ca_bootstrap_force_rotate | bool
+      or not (local_ca_bootstrap_cert_stat.stat.exists | default(false) | bool)

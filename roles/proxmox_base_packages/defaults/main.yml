@@ -1,0 +1,7 @@
+---
+proxmox_base_packages_proxmox_base_packages:
+  - openvswitch-switch
+  - htop
+  - lm-sensors
+  - python3-proxmoxer
+  - upgrader

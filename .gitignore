@@ -1,0 +1,30 @@
+# Secrets - never commit
+ansible_password
+tmp/
+generated/pki/
+generated/secrets/
+
+# All markdown ignored by default
+*.md
+
+# CYPRESS facilities
+docs/graph/
+CLAUDE.md
+EXPERT_SEED_INSTALL_PROMPT.md
+.prime/
+.opencode/
+.codex/
+.archive/
+.cypress/
+.sanitize/
+.github/
+
+# .claude/ ignored by default
+.claude/*
+
+# Explicit un-ignores: AGENTS.md and Claude Code skills are tracked
+!AGENTS.md
+!README.md
+!.claude/
+!.claude/skills/
+!.claude/skills/**

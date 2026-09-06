@@ -1,0 +1,55 @@
+---
+host_distro_type: debian
+install_docker: true
+main_user: wordpress
+use_compose: true
+
+compose_projects:
+  - compose_directory: wordpress
+    compose_source: template
+
+compose_secret_vars:
+  - WORDPRESS_DB_ROOT_PASSWORD
+  - WORDPRESS_DB_PASSWORD
+
+composer:
+  services:
+    db:
+      image: mariadb:10.6
+      restart: unless-stopped
+      environment:
+        MYSQL_ROOT_PASSWORD: >-
+          {{ wordpress_db_root_password
+          | default(lookup('ansible.builtin.env', 'WORDPRESS_DB_ROOT_PASSWORD')) }}
+        MYSQL_DATABASE: wordpress
+        MYSQL_USER: wordpress
+        MYSQL_PASSWORD: >-
+          {{ wordpress_db_password
+          | default(lookup('ansible.builtin.env', 'WORDPRESS_DB_PASSWORD')) }}
+      volumes:
+        - db_data:/var/lib/mysql
+    wordpress:
+      image: wordpress:6.4-apache
+      depends_on:
+        - db
+      restart: unless-stopped
+      environment:
+        WORDPRESS_DB_HOST: db:3306
+        WORDPRESS_DB_USER: wordpress
+        WORDPRESS_DB_PASSWORD: >-
+          {{ wordpress_db_password
+          | default(lookup('ansible.builtin.env', 'WORDPRESS_DB_PASSWORD')) }}
+        WORDPRESS_DB_NAME: wordpress
+      ports:
+        - "8080:80"
+      volumes:
+        - wp_data:/var/www/html
+  volumes:
+    db_data: {}
+    wp_data: {}
+
+proxy_publish:
+  - domain: wordpress.example.lan
+    upstream_host: 192.0.2.126
+    upstream_port: 8080
+    upstream_scheme: http

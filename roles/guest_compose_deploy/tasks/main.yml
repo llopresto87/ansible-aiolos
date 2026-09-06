@@ -1,0 +1,91 @@
+---
+- name: Resolve compose deployment settings
+  ansible.builtin.set_fact:
+    guest_compose_deploy_use_compose: >-
+      {{ use_compose | default(false) | bool }}
+    guest_compose_deploy_compose_projects: >-
+      {{ compose_projects | default([]) }}
+
+- name: Validate compose deployment contract
+  ansible.builtin.assert:
+    that:
+      - main_user is defined
+      - guest_compose_deploy_compose_projects | length > 0
+    fail_msg: >-
+      main_user and compose_projects[] are required when
+      use_compose is enabled
+  when: guest_compose_deploy_use_compose
+
+- name: Create compose directories
+  ansible.builtin.file:
+    path: "/home/{{ main_user }}/{{ item.compose_directory }}"
+    state: directory
+    owner: "{{ main_user }}"
+    group: "{{ main_user }}"
+    mode: "0755"
+  loop: "{{ guest_compose_deploy_compose_projects }}"
+  when: guest_compose_deploy_use_compose
+
+- name: Copy compose files from library
+  ansible.builtin.copy:
+    src: "{{ role_path }}/../compose_library/files/{{ item.compose_file }}"
+    dest: "/home/{{ main_user }}/{{ item.compose_directory }}/docker-compose.yaml"
+    owner: "{{ main_user }}"
+    group: "{{ main_user }}"
+    mode: "0644"
+  loop: "{{ guest_compose_deploy_compose_projects }}"
+  when:
+    - guest_compose_deploy_use_compose
+    - (item.compose_source | default('library')) == 'library'
+
+- name: Copy compose files from role files
+  ansible.builtin.copy:
+    src: "{{ item.compose_file }}"
+    dest: "/home/{{ main_user }}/{{ item.compose_directory }}/docker-compose.yaml"
+    owner: "{{ main_user }}"
+    group: "{{ main_user }}"
+    mode: "0644"
+  loop: "{{ guest_compose_deploy_compose_projects }}"
+  when:
+    - guest_compose_deploy_use_compose
+    - (item.compose_source | default('library')) == 'file'
+
+- name: Render compose files from template
+  ansible.builtin.template:
+    src: docker_compose.yaml.j2
+    dest: "/home/{{ main_user }}/{{ item.compose_directory }}/docker-compose.yaml"
+    owner: "{{ main_user }}"
+    group: "{{ main_user }}"
+    mode: "0644"
+  loop: "{{ guest_compose_deploy_compose_projects }}"
+  when:
+    - guest_compose_deploy_use_compose
+    - (item.compose_source | default('library')) == 'template'
+
+- name: Copy config directories from library
+  ansible.builtin.copy:
+    src: "{{ role_path }}/../compose_library/files/{{ item.config_dir }}/"
+    dest: "/home/{{ main_user }}/{{ item.compose_directory }}/{{ item.config_dir }}/"
+    owner: "{{ main_user }}"
+    group: "{{ main_user }}"
+    mode: "0755"
+  loop: "{{ guest_compose_deploy_compose_projects }}"
+  when:
+    - guest_compose_deploy_use_compose
+    - (item.config_dir | default('')) != ''
+
+- name: Render config templates from library
+  ansible.builtin.template:
+    src: "{{ role_path }}/../compose_library/templates/{{ tmpl }}"
+    dest: "/home/{{ main_user }}/{{ item.0.compose_directory }}/{{ item.0.config_dir }}/{{ tmpl | basename }}"
+    owner: "{{ main_user }}"
+    group: "{{ main_user }}"
+    mode: "0644"
+  vars:
+    tmpl: "{{ item.1 }}"
+  loop: >-
+    {{ guest_compose_deploy_compose_projects
+       | subelements('config_templates', skip_missing=True) }}
+  loop_control:
+    label: "{{ item.0.compose_directory }}/{{ item.1 }}"
+  when: guest_compose_deploy_use_compose

@@ -1,0 +1,8 @@
+---
+# proxmox_network_interfaces defaults
+# bridge_settings: required - dict with bridges configuration
+#   bridges:
+#     - name: vmbr0
+#       nics: [eno1]
+#       ip: 192.0.2.x/24
+#       gateway: 192.0.2.1

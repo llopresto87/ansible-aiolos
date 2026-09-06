@@ -1,0 +1,23 @@
+---
+- name: Install CA certificates package (OpenWrt)
+  ansible.builtin.command: apk add ca-certificates
+  register: local_ca_distribute_openwrt_packages
+  changed_when: "'Installing' in local_ca_distribute_openwrt_packages.stdout"
+
+- name: Ensure OpenWrt local CA directory exists
+  ansible.builtin.file:
+    path: "{{ local_ca_distribute_openwrt_cert_path | dirname }}"
+    state: directory
+    mode: "0755"
+
+- name: Copy local CA certificate (OpenWrt)
+  ansible.builtin.copy:
+    src: "{{ local_ca_distribute_source_cert_path }}"
+    dest: "{{ local_ca_distribute_openwrt_cert_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Update OpenWrt trust store
+  when:
+    - not ansible_check_mode
+      or (local_ca_distribute_source_cert_stat.stat.exists | default(false))

@@ -1,0 +1,204 @@
+---
+# Main router — RPi4 (bcm27xx/bcm2711) running OpenWrt 25.12
+# 5G modem gateway at 192.0.2.1
+
+ansible_host: 192.0.2.1
+
+openwrt_device:
+  hostname: OpenWrt
+  factory_ip: 192.168.1.1
+  ip_address: 192.0.2.1
+  netmask: 255.255.255.0
+  role: router
+  arch: aarch64_cortex-a72
+  target: bcm27xx/bcm2711
+  root_password: !vault |
+    $ANSIBLE_VAULT;1.1;AES256
+    00000000000000000000000000000000000000000000000000000000000000000000000000000000
+    0000000000000000000000000000000000000000000000000000000000000000000000000000000000
+
+openwrt_ssh:
+  ssh_key_type: infrastructure
+  disable_password_auth: true
+
+openwrt_packages:
+  # --- core/base (auto-pulled by dependencies but explicit for reprovision) ---
+  - python3
+  - curl
+  - htop
+  - vim
+  - jq
+  - picocom
+  - irqbalance
+  - coreutils-chown
+  - ip-full
+  - ss
+  - tc-full
+  - collectd
+  - collectd-mod-sqm
+  - lm-sensors
+  - lm-sensors-detect
+  - unzip
+  - parted
+  - partx-utils
+  - e2fsprogs
+  - btrfs-progs
+  # --- USB modem (MBIM/QMI Quectel) ---
+  - kmod-usb-net-cdc-mbim
+  - kmod-usb-net-qmi-wwan
+  - kmod-usb-serial-option
+  - kmod-usb-serial-wwan
+  - kmod-usb-net-cdc-ncm
+  - kmod-usb-net-cdc-eem
+  - kmod-usb-net-cdc-subset
+  - kmod-usb-net-rndis
+  - kmod-usb-net-ipheth
+  - kmod-usb-wdm
+  - mbim-utils
+  - umbim
+  - uqmi
+  - luci-proto-mbim
+  - luci-proto-qmi
+  - usbmuxd
+  - libimobiledevice
+  - usbutils
+  # --- QoS / traffic shaping ---
+  - kmod-sched
+  - kmod-sched-ctinfo
+  - kmod-sched-red
+  - kmod-sched-cake
+  - kmod-netem
+  - kmod-ifb
+  - kmod-tcp-bbr
+  - sqm-scripts
+  - luci-app-sqm
+  # --- OpenVPN / VPN ---
+  - openvpn-openssl
+  - luci-app-openvpn
+  - kmod-tun
+  # --- PBR (policy-based routing) ---
+  - pbr
+  - luci-app-pbr
+  # --- Docker ---
+  - docker
+  - dockerd
+  - docker-compose
+  - kmod-veth
+  - kmod-br-netfilter
+  - kmod-nf-ipvs
+  - kmod-netlink-diag
+  - iptables-nft
+  - ip6tables-nft
+  - iptables-mod-extra
+  - iptables-mod-ipopt
+  # --- LuCI ---
+  - luci
+  - luci-ssl
+  - luci-mod-admin-full
+  - luci-app-firewall
+  - luci-app-package-manager
+  - luci-app-attendedsysupgrade
+  - luci-app-dockerman
+  # --- Zapret (DPI circumvention) ---
+  - kmod-nfnetlink-queue
+  # --- Misc ---
+  - ttyd
+  - dnsmasq-full
+  - kmod-nft-queue
+
+openwrt_packages_external:
+  - name: zapret
+    note: "installed via luci-app-zapret; may need manual .apk sideload"
+  - name: luci-app-zapret
+    note: "external package with custom signature"
+  - name: luci-theme-argon
+    note: "external theme package with custom signature"
+
+openwrt_raw_configs:
+  # --- UCI config files (pushed to /etc/config/) ---
+  - src: main_router/network
+    dest: /etc/config/network
+  - src: main_router/firewall
+    dest: /etc/config/firewall
+  - src: main_router/wireless
+    dest: /etc/config/wireless
+  - src: main_router/system
+    dest: /etc/config/system
+  - src: main_router/dhcp
+    dest: /etc/config/dhcp
+  - src: main_router/sqm
+    dest: /etc/config/sqm
+  - src: main_router/qosmate
+    dest: /etc/config/qosmate
+  - src: main_router/openvpn
+    dest: /etc/config/openvpn
+  - src: main_router/pbr
+    dest: /etc/config/pbr
+  - src: main_router/zapret
+    dest: /etc/config/zapret
+  - src: main_router/dockerd
+    dest: /etc/config/dockerd
+  - src: main_router/dropbear
+    dest: /etc/config/dropbear
+  - src: main_router/ttyd
+    dest: /etc/config/ttyd
+  # --- Non-UCI files ---
+  - src: main_router/vpn.ovpn
+    dest: /etc/openvpn/vpn.ovpn
+    mode: "0600"
+  # --- Custom init.d scripts ---
+  - src: main_router/l7v3.initd
+    dest: /etc/init.d/l7v3
+    mode: "0755"
+  - src: main_router/o1qos.initd
+    dest: /etc/init.d/o1qos
+    mode: "0755"
+
+openwrt_services:
+  enable:
+    - dnsmasq
+    - dropbear
+    - firewall
+    - network
+    - openvpn
+    - pbr
+    - zapret
+    - collectd
+    - irqbalance
+    - sqm
+    - uhttpd
+    - dockerd
+    - ttyd
+    - odhcpd
+    - sysntpd
+    - cron
+    - usbmuxd
+    - o1qos
+    - rpcd
+    - lm-sensors
+  disable: []
+
+openwrt_sysupgrade_preserve:
+  # --- belt-and-suspenders: ensure device stays reachable after upgrade ---
+  - /etc/config/network
+  - /etc/config/wireless
+  - /etc/config/system
+  - /etc/config/firewall
+  - /etc/config/dhcp
+  - /etc/config/dropbear
+  - /etc/dropbear/
+  - /etc/shadow
+  - /etc/passwd
+  # --- custom init.d services (not from any package) ---
+  - /etc/init.d/l7v3
+  - /etc/init.d/o1qos
+  # --- VPN credentials and configs ---
+  - /etc/openvpn/
+  # --- application configs that may lack a keep.d entry ---
+  - /etc/config/qosmate
+  - /etc/config/sqm
+  - /etc/config/pbr
+  - /etc/config/zapret
+  - /etc/config/dockerd
+  - /etc/config/openvpn
+  - /etc/config/ttyd

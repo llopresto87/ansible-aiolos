@@ -1,0 +1,36 @@
+---
+# Example group vars for gpu-node.example.lan (AMD GPU / VFIO passthrough node)
+# Before initializing SSH keys, set ansible_password via vault:
+# ansible_password: !vault |
+#   # Run: ansible-vault encrypt_string 'your_bootstrap_password'
+#   $ANSIBLE_VAULT;1.1;AES256
+#   00000000000000000000000000000000
+
+os: debian
+hostname: "gpu-node.example.lan"
+root_ssh_key_type: cluster
+ssh_hardening_disable_ssh_password: true
+turn_off_amdgpu: true
+is_amd: true
+proxmox_vfio_enabled: true
+proxmox_cpu_governor_governor: powersave
+bridge_settings:
+  use_openvswitch: true
+  bridges:
+    - name: vmbr0         # Name of the bridge
+      nics:
+        - enp1s0  # Network interfaces to be bridged for connectivity
+      ip: 192.0.2.141/24
+      gateway: 192.0.2.1
+      mtu: 1440
+
+    - name: vmbr000       # Name of another bridge, if needed
+      mtu: 1440
+      nics:
+        - enp2s0
+
+apt_packages:
+  - openvswitch-switch
+  - htop
+  - lm-sensors
+  - python3-proxmoxer

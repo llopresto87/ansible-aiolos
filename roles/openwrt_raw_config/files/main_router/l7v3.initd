@@ -1,0 +1,218 @@
+#!/bin/sh
+# l7v3 - Helper script invoked by o1qos (NOT an independent init service)
+# Usage:
+#   /etc/init.d/l7v3 start <dev...>
+#   /etc/init.d/l7v3 stop
+#   /etc/init.d/l7v3 reload <dev...>
+
+PROG="l7v3"
+T_NETDEV_FAM="netdev"
+T_NETDEV="qos_l7"
+T_INET_FAM="inet"
+T_INET="qos_l7_fallback"
+
+log()  { logger -t "$PROG" -- "$*"; }
+warn() { logger -t "$PROG" -p user.warn -- "$*"; }
+err()  { logger -t "$PROG" -p user.err  -- "$*"; }
+
+need_cmd() { command -v "$1" >/dev/null 2>&1 || { err "Missing required command: $1"; exit 1; }; }
+dev_exists(){ ip link show dev "$1" >/dev/null 2>&1; }
+
+# nft identifiers can't safely contain '-', '.', ':' etc unless quoted.
+# We'll keep identifiers simple and deterministic.
+sanitize_id() {
+    echo "$1" | sed 's/[^A-Za-z0-9_]/_/g'
+}
+
+stop_rules() {
+    nft delete table $T_NETDEV_FAM $T_NETDEV >/dev/null 2>&1
+    nft delete table $T_INET_FAM   $T_INET   >/dev/null 2>&1
+}
+
+build_ruleset() {
+    local tmp="$1"; shift
+    local devs="$*"
+
+    cat >"$tmp" <<EOF
+table $T_NETDEV_FAM $T_NETDEV {
+  # Base chains per device (netdev ingress) so DSCP is applied BEFORE tc ingress redirect/IFB
+EOF
+
+    for d in $devs; do
+        local cid
+        cid="$(sanitize_id "$d")"
+
+        cat >>"$tmp" <<EOF
+  chain ingress_${cid} {
+    type filter hook ingress device "${d}" priority -150; policy accept;
+
+    # --- Gaming UDP (EF) ---
+    ip  protocol udp udp dport 5000-5500 ip dscp set ef
+    ip  protocol udp udp dport 8393-8400 ip dscp set ef
+    ip  protocol udp udp sport 5000-5500 ip dscp set ef
+    ip  protocol udp udp sport 8393-8400 ip dscp set ef
+
+    ip6 nexthdr udp udp dport 5000-5500 ip6 dscp set ef
+    ip6 nexthdr udp udp dport 8393-8400 ip6 dscp set ef
+    ip6 nexthdr udp udp sport 5000-5500 ip6 dscp set ef
+    ip6 nexthdr udp udp sport 8393-8400 ip6 dscp set ef
+
+    # --- Small UDP fallback (packet length, not udp header length) ---
+    meta length < 1024 ip  protocol udp ip dscp set ef
+    meta length < 1024 ip6 nexthdr udp ip6 dscp set ef
+
+    # --- DNS (CS5) ---
+    ip  protocol udp udp dport 53 ip dscp set cs5
+    ip  protocol tcp tcp dport 53 ip dscp set cs5
+    ip  protocol udp udp sport 53 ip dscp set cs5
+    ip  protocol tcp tcp sport 53 ip dscp set cs5
+
+    ip6 nexthdr udp udp dport 53 ip6 dscp set cs5
+    ip6 nexthdr tcp tcp dport 53 ip6 dscp set cs5
+    ip6 nexthdr udp udp sport 53 ip6 dscp set cs5
+    ip6 nexthdr tcp tcp sport 53 ip6 dscp set cs5
+
+    # --- HTTPS/HTTP (AF33/AF31) ---
+    ip  protocol tcp tcp dport 443 ip dscp set af33
+    ip  protocol tcp tcp sport 443 ip dscp set af33
+    ip  protocol tcp tcp dport 80  ip dscp set af31
+    ip  protocol tcp tcp sport 80  ip dscp set af31
+
+    ip6 nexthdr tcp tcp dport 443 ip6 dscp set af33
+    ip6 nexthdr tcp tcp sport 443 ip6 dscp set af33
+    ip6 nexthdr tcp tcp dport 80  ip6 dscp set af31
+    ip6 nexthdr tcp tcp sport 80  ip6 dscp set af31
+
+    # --- BitTorrent ports (CS1, port-based) ---
+    ip  protocol tcp tcp dport 6881-6999 ip dscp set cs1
+    ip  protocol tcp tcp sport 6881-6999 ip dscp set cs1
+    ip  protocol udp udp dport 6881-6999 ip dscp set cs1
+    ip  protocol udp udp sport 6881-6999 ip dscp set cs1
+
+    ip  protocol tcp tcp dport 51413 ip dscp set cs1
+    ip  protocol tcp tcp sport 51413 ip dscp set cs1
+    ip  protocol udp udp dport 51413 ip dscp set cs1
+    ip  protocol udp udp sport 51413 ip dscp set cs1
+
+    ip  protocol tcp tcp dport 6969 ip dscp set cs1
+    ip  protocol tcp tcp sport 6969 ip dscp set cs1
+    ip  protocol udp udp dport 6969 ip dscp set cs1
+    ip  protocol udp udp sport 6969 ip dscp set cs1
+
+    ip6 nexthdr tcp tcp dport 6881-6999 ip6 dscp set cs1
+    ip6 nexthdr tcp tcp sport 6881-6999 ip6 dscp set cs1
+    ip6 nexthdr udp udp dport 6881-6999 ip6 dscp set cs1
+    ip6 nexthdr udp udp sport 6881-6999 ip6 dscp set cs1
+
+    ip6 nexthdr tcp tcp dport 51413 ip6 dscp set cs1
+    ip6 nexthdr tcp tcp sport 51413 ip6 dscp set cs1
+    ip6 nexthdr udp udp dport 51413 ip6 dscp set cs1
+    ip6 nexthdr udp udp sport 51413 ip6 dscp set cs1
+
+    ip6 nexthdr tcp tcp dport 6969 ip6 dscp set cs1
+    ip6 nexthdr tcp tcp sport 6969 ip6 dscp set cs1
+    ip6 nexthdr udp udp dport 6969 ip6 dscp set cs1
+    ip6 nexthdr udp udp sport 6969 ip6 dscp set cs1
+  }
+EOF
+    done
+
+    echo "}" >>"$tmp"
+
+    # Optional inet fallback (like your old script's prerouting/forward), but kept separate
+    # and NOT using shell redirections.
+    cat >>"$tmp" <<EOF
+
+table $T_INET_FAM $T_INET {
+  chain prerouting {
+    type filter hook prerouting priority -150; policy accept;
+
+    ip protocol udp udp dport 5000-5500 ip dscp set ef
+    ip protocol udp udp dport 8393-8400 ip dscp set ef
+    meta length < 1024 ip protocol udp ip dscp set ef
+
+    ip protocol udp udp dport 53 ip dscp set cs5
+    ip protocol tcp tcp dport 53 ip dscp set cs5
+
+    ip protocol tcp tcp dport 443 ip dscp set af33
+    ip protocol tcp tcp dport 80  ip dscp set af31
+
+    ip protocol tcp tcp dport 6881-6999 ip dscp set cs1
+    ip protocol udp udp dport 6881-6999 ip dscp set cs1
+
+    meta nfproto ipv4 ct bytes >= 5000000 ip dscp set af13
+
+    ip6 nexthdr udp udp dport 5000-5500 ip6 dscp set ef
+    ip6 nexthdr udp udp dport 8393-8400 ip6 dscp set ef
+    meta length < 1024 ip6 nexthdr udp ip6 dscp set ef
+
+    ip6 nexthdr udp udp dport 53 ip6 dscp set cs5
+    ip6 nexthdr tcp tcp dport 53 ip6 dscp set cs5
+
+    ip6 nexthdr tcp tcp dport 443 ip6 dscp set af33
+    ip6 nexthdr tcp tcp dport 80  ip6 dscp set af31
+
+    ip6 nexthdr tcp tcp dport 6881-6999 ip6 dscp set cs1
+    ip6 nexthdr udp udp dport 6881-6999 ip6 dscp set cs1
+
+    meta nfproto ipv6 ct bytes >= 5000000 ip6 dscp set af13
+  }
+}
+EOF
+}
+
+start_rules() {
+    need_cmd nft
+    need_cmd ip
+    need_cmd logger
+
+    local devs=""
+    for d in "$@"; do
+        dev_exists "$d" && devs="$devs $d" || warn "Device '$d' not present; skipping netdev hook"
+    done
+
+    local tmp="/tmp/${PROG}.nft"
+    build_ruleset "$tmp" $devs
+
+    # shell-side cleanup (safe), like your original script style
+    stop_rules
+
+    # Strict validation first
+    local chk
+    chk="$(nft -c -f "$tmp" 2>&1)"
+    if [ $? -ne 0 ]; then
+        err "nft -c check failed for $tmp"
+        err "check output: $chk"
+        exit 1
+    fi
+
+    local out
+    out="$(nft -f "$tmp" 2>&1)"
+    if [ $? -ne 0 ]; then
+        err "Failed to load nft rules from $tmp"
+        err "nft output: $out"
+        exit 1
+    fi
+
+    log "DSCP marking loaded (netdev ingress + inet fallback)."
+}
+
+case "$1" in
+    start)
+        shift
+        start_rules "$@"
+        ;;
+    stop)
+        need_cmd nft
+        stop_rules
+        log "DSCP marking cleared."
+        ;;
+    reload|restart)
+        shift
+        start_rules "$@"
+        ;;
+    *)
+        echo "Usage: $0 {start|stop|reload} [dev1 dev2 ...]"
+        exit 1
+        ;;
+esac

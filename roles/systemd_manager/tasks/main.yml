@@ -1,0 +1,9 @@
+---
+- name: Manage systemd services
+  ansible.builtin.systemd:
+    name: "{{ item.name }}"
+    state: "{{ item.state | default('started') }}"
+    enabled: "{{ item.enabled | default(true) }}"
+    daemon_reload: "{{ item.daemon_reload | default(false) }}"
+  loop: "{{ managed_services | default([]) }}"
+  when: managed_services is defined and managed_services | length > 0

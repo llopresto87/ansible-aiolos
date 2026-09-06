@@ -1,0 +1,4 @@
+---
+# guest_compose_converge defaults
+# Runs docker compose up -d in each compose_projects directory
+guest_compose_converge_docker_host: unix:///var/run/docker.sock

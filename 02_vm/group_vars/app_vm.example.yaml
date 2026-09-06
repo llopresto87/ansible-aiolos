@@ -1,0 +1,34 @@
+---
+# VM contract for immich workload on pve2.
+proxmox_vm_provision_proxmox_vm:
+  node: pve2
+  vmid: 616
+  name: immich-vm-pve2
+  clone: ub2404tpl-virtio
+  full: true
+  storage: data
+  disk_size: 32
+  memory: 4096
+  cores: 2
+  sockets: 1
+  boot: "order=virtio0;sata0;net0"
+  sata0: data:cloudinit,media=cdrom
+  net0: virtio,bridge=vmbr0
+  ostype: l26
+  ciuser: youruser
+  cipassword: !vault |
+          $ANSIBLE_VAULT;1.1;AES256
+          00000000000000000000000000000000000000000000000000000000000000000000000000000000
+          0000000000000000000000000000000000000000000000000000000000000000000000000000000000
+  ipconfig:
+    ipconfig0: ip=192.0.2.128/24,gw=192.0.2.1
+  nameservers:
+    - 192.0.2.11
+  searchdomains: example.lan
+  ssh_public_key_path: files/ssh_keys/cluster.pub
+  ssh_private_key_path: files/ssh_keys/cluster
+  ip_address: 192.0.2.128
+  post_provision:
+    install_base_packages: true
+    install_docker: true
+    deploy_compose: false

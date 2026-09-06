@@ -1,0 +1,10 @@
+---
+# guest_compose_deploy defaults
+
+# compose_projects: []
+#   Each item supports:
+#     compose_file: filename in compose_library/files/ or role files/
+#     compose_directory: target directory under /home/{{ main_user }}/
+#     compose_source: library (default) | file | template
+#     config_dir: optional config directory to copy from library
+#     config_templates: optional list of templates to render

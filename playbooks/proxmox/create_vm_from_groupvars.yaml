@@ -1,0 +1,27 @@
+---
+- name: Create or update Proxmox VMs from group_vars
+  hosts: all
+  become: true
+  roles:
+    - contract_validation
+  tasks:
+    - name: Ensure proxmox_vms is defined
+      ansible.builtin.assert:
+        that:
+          - proxmox_vms is defined
+        fail_msg: "No proxmox_vms list found in group_vars."
+
+    - name: Provision VMs from proxmox_vms list
+      ansible.builtin.include_role:
+        name: proxmox_vm_provision
+      vars:
+        proxmox_vm_provision_proxmox_vm: "{{ item }}"
+        proxmox_vm_provision_wait_for_ssh: true
+      loop: "{{ proxmox_vms }}"
+
+- name: Run post-provision roles on provisioned VMs
+  hosts: provisioned_vms
+  become: true
+  gather_facts: true
+  roles:
+    - guest_post_provision

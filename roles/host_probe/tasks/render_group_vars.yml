@@ -1,0 +1,17 @@
+---
+# Aggregate collected data and render group_vars YAML on the controller
+
+- name: Build render payload
+  ansible.builtin.set_fact:
+    host_probe_render:
+      hostname: "{{ inventory_hostname }}"
+      probe_mode: "{{ host_probe_mode }}"
+      facts: "{{ host_probe_facts | default({}) }}"
+      fetched: "{{ host_probe_fetch_results.results | default([]) }}"
+
+- name: Render group_vars template to controller
+  ansible.builtin.template:
+    src: group_vars.j2
+    dest: "{{ host_probe_group_vars_dir }}/{{ inventory_hostname }}.yaml"
+    mode: '0644'
+  delegate_to: localhost

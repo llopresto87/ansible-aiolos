@@ -1,0 +1,13 @@
+---
+- name: Set Proxmox base configuration
+  hosts: all
+  become: true
+  roles:
+    - contract_validation
+    - guest_base_packages
+    - local_ca_distribute
+    - guest_docker_engine
+    - guest_user_bootstrap
+    - guest_compose_deploy
+    - nginx_proxy_configure
+    - guest_compose_converge

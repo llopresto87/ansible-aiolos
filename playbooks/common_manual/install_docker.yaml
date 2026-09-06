@@ -1,0 +1,9 @@
+---
+- name: Install Docker on localhost
+  hosts: localhost
+  become: true
+  vars:
+    ansible_connection: local
+    install_docker: true
+  roles:
+    - guest_docker_engine

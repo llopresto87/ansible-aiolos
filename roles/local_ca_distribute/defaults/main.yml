@@ -1,0 +1,9 @@
+---
+local_ca_distribute_enabled: true
+local_ca_distribute_run_bootstrap: true
+local_ca_distribute_source_cert_path: "{{ playbook_dir }}/generated/pki/local-ca.crt"
+local_ca_distribute_target_os_family: ""
+
+local_ca_distribute_debian_cert_path: /usr/local/share/ca-certificates/local-homelab-ca.crt
+local_ca_distribute_redhat_cert_path: /etc/pki/ca-trust/source/anchors/local-homelab-ca.crt
+local_ca_distribute_openwrt_cert_path: /usr/local/share/ca-certificates/local-homelab-ca.crt

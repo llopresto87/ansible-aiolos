@@ -1,0 +1,35 @@
+---
+- name: Upgrade OS packages
+  hosts: all
+  become: true
+
+  pre_tasks:
+    - name: Back up /etc/resolv.conf
+      ansible.builtin.copy:
+        src: /etc/resolv.conf
+        dest: /etc/resolv.conf.bak
+        remote_src: true
+        mode: "0644"
+
+    - name: Overwrite with temporary DNS
+      ansible.builtin.copy:
+        dest: /etc/resolv.conf
+        content: |
+          nameserver {{ apt_install_packages_temp_dns }}
+        mode: "0644"
+
+  roles:
+    - apt_install_packages
+
+  post_tasks:
+    - name: Restore original resolv.conf
+      ansible.builtin.copy:
+        src: /etc/resolv.conf.bak
+        dest: /etc/resolv.conf
+        remote_src: true
+        mode: "0644"
+
+    - name: Remove backup file
+      ansible.builtin.file:
+        path: /etc/resolv.conf.bak
+        state: absent

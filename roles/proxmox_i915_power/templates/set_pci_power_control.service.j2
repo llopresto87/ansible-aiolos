@@ -1,0 +1,10 @@
+[Unit]
+Description=Set PCI power control
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c "echo '{{ proxmox_i915_power_control }}' > '/sys/bus/pci/devices/{{ proxmox_i915_power_proxmox_i915_pci_device }}/power/control'"
+
+[Install]
+WantedBy=multi-user.target

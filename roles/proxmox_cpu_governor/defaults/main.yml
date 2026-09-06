@@ -1,0 +1,3 @@
+---
+# proxmox_cpu_governor defaults
+# proxmox_cpu_governor_governor: performance  # or powersave, ondemand, etc.

@@ -1,0 +1,7 @@
+---
+- name: Ensure cloud-init clone template on Proxmox host
+  hosts: all
+  gather_facts: false
+  become: true
+  roles:
+    - proxmox_vm_template

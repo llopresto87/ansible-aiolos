@@ -1,0 +1,18 @@
+---
+# Shared variables for all VM provisioning groups.
+# proxmox_api_password must match the Proxmox root@pam credential.
+#
+# Default connection is local (API tasks use connection: local).
+# The cloud_image import tasks override to SSH when needed.
+
+ansible_connection: local
+ansible_user: root
+ansible_ssh_private_key_file: "files/ssh_keys/cluster"
+
+# API host derived from ansible_host (the Proxmox node FQDN).
+proxmox_vm_provision_proxmox_api_host: "{{ ansible_host }}"
+
+proxmox_api_password: !vault |
+          $ANSIBLE_VAULT;1.1;AES256
+          00000000000000000000000000000000000000000000000000000000000000000000000000000000
+          0000000000000000000000000000000000000000000000000000000000000000000000000000000000

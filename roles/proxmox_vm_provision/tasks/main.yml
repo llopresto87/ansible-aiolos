@@ -1,0 +1,361 @@
+---
+- name: Validate required proxmox_vm_provision_proxmox_vm fields
+  ansible.builtin.assert:
+    that:
+      - proxmox_api_password is defined
+      - proxmox_vm_provision_proxmox_vm is defined
+      - proxmox_vm_provision_proxmox_vm.node is defined
+      - proxmox_vm_provision_proxmox_vm.vmid is defined
+      - proxmox_vm_provision_proxmox_vm.name is defined
+    fail_msg: proxmox_vm_provision_proxmox_vm contract is incomplete for VM provisioning
+
+- name: Enforce non-default VM technical user/password policy
+  ansible.builtin.assert:
+    that:
+      - proxmox_vm_provision_proxmox_vm.ciuser is defined
+      - proxmox_vm_provision_proxmox_vm.ciuser not in ['ansible', 'root', 'admin', 'ubuntu', 'debian', 'cloud-user']
+      - proxmox_vm_provision_proxmox_vm.cipassword is defined
+      - (proxmox_vm_provision_proxmox_vm.cipassword | string | length) >= 16
+      - (proxmox_vm_provision_proxmox_vm.cipassword | string) is match('.*[A-Z].*')
+      - (proxmox_vm_provision_proxmox_vm.cipassword | string) is match('.*[a-z].*')
+      - (proxmox_vm_provision_proxmox_vm.cipassword | string) is match('.*[0-9].*')
+      - (proxmox_vm_provision_proxmox_vm.cipassword | string) is match('.*[^A-Za-z0-9].*')
+    fail_msg: >-
+      VM contracts must define a non-default ad-hoc ciuser and a strong
+      cipassword (>=16 chars, mixed upper/lower/digit/special).
+
+- name: Resolve VM SSH public key path
+  ansible.builtin.set_fact:
+    proxmox_vm_provision_ssh_public_key_path: >-
+      {{ proxmox_vm_provision_proxmox_vm.ssh_public_key_path
+      | default(proxmox_vm_provision_proxmox_vm.public_key | default('')) }}
+
+- name: Resolve final VM SSH public key path for lookup
+  ansible.builtin.set_fact:
+    proxmox_vm_provision_ssh_public_key_path_resolved: >-
+      {{ lookup('ansible.builtin.first_found', proxmox_vm_provision_ssh_key_candidates, errors='ignore') }}
+  vars:
+    proxmox_vm_provision_ssh_key_candidates:
+      files:
+        - "{{ proxmox_vm_provision_ssh_public_key_path }}"
+        - "{{ playbook_dir }}/../../{{ proxmox_vm_provision_ssh_public_key_path }}"
+      skip: true
+  when: proxmox_vm_provision_ssh_public_key_path | length > 0
+
+- name: Assert VM SSH public key path exists
+  ansible.builtin.assert:
+    that:
+      - >-
+        (proxmox_vm_provision_ssh_public_key_path | length == 0)
+        or (proxmox_vm_provision_ssh_public_key_path_resolved | default('') | length > 0)
+    fail_msg: >-
+      Unable to resolve SSH public key path
+      '{{ proxmox_vm_provision_ssh_public_key_path }}'.
+      Provide an absolute path or a repository-relative path.
+
+- name: Warn when using legacy proxmox_vm_provision_proxmox_vm.public_key
+  ansible.builtin.debug:
+    msg: >-
+      proxmox_vm_provision_proxmox_vm.public_key is deprecated; prefer
+      proxmox_vm_provision_proxmox_vm.ssh_public_key_path.
+  when:
+    - proxmox_vm_provision_proxmox_vm is defined
+    - proxmox_vm_provision_proxmox_vm.ssh_public_key_path is not defined
+    - proxmox_vm_provision_proxmox_vm.public_key is defined
+
+- name: Render cloud-init user-data when requested
+  ansible.builtin.include_tasks: cloudinit.yml
+  when:
+    - proxmox_vm_provision_proxmox_vm is defined
+    - proxmox_vm_provision_proxmox_vm.cloud_init_user_data is defined
+    - proxmox_vm_provision_proxmox_vm.cloud_init_user_data.enabled | default(false)
+
+- name: Check if target VM already exists
+  community.proxmox.proxmox_kvm:
+    api_user: "{{ proxmox_vm_provision_proxmox_api_user }}"
+    api_password: "{{ proxmox_api_password }}"
+    api_host: "{{ proxmox_vm_provision_proxmox_api_host }}"
+    node: "{{ proxmox_vm_provision_proxmox_vm.node }}"
+    vmid: "{{ proxmox_vm_provision_proxmox_vm.vmid }}"
+    state: current
+  register: proxmox_vm_provision_vm_check
+  failed_when: false
+  connection: local
+  become: false
+  no_log: "{{ proxmox_vm_provision_no_log | bool }}"
+
+- name: Determine effective update mode
+  ansible.builtin.set_fact:
+    proxmox_vm_provision_effective_update: >-
+      {{ proxmox_vm_provision_proxmox_vm.update
+         | default(not (proxmox_vm_provision_vm_check is failed)) | bool }}
+
+- name: Build Proxmox VM controller payloads from legacy and native fields
+  ansible.builtin.set_fact:
+    proxmox_vm_provision_is_clone_mode: "{{ proxmox_vm_provision_proxmox_vm.clone is defined }}"
+    proxmox_vm_provision_target_vmid: >-
+      {{ proxmox_vm_provision_proxmox_vm.newid
+      | default(proxmox_vm_provision_proxmox_vm.vmid) }}
+    proxmox_vm_provision_scsi_payload: >-
+      {{
+        (proxmox_vm_provision_proxmox_vm.scsi | default({}))
+        | combine(
+            {'scsi0': proxmox_vm_provision_proxmox_vm.scsi0},
+            recursive=True
+          )
+        if proxmox_vm_provision_proxmox_vm.scsi0 is defined
+        else (proxmox_vm_provision_proxmox_vm.scsi | default({}))
+      }}
+    proxmox_vm_provision_virtio_payload: >-
+      {{
+        (proxmox_vm_provision_proxmox_vm.virtio | default({}))
+        | combine(
+            {'virtio0': proxmox_vm_provision_proxmox_vm.virtio0},
+            recursive=True
+          )
+        if proxmox_vm_provision_proxmox_vm.virtio0 is defined
+        else (proxmox_vm_provision_proxmox_vm.virtio | default({}))
+      }}
+    proxmox_vm_provision_net_payload: >-
+      {{
+        (proxmox_vm_provision_proxmox_vm.net | default({}))
+        | combine(
+            {'net0': proxmox_vm_provision_proxmox_vm.net0},
+            recursive=True
+          )
+        if proxmox_vm_provision_proxmox_vm.net0 is defined
+        else (proxmox_vm_provision_proxmox_vm.net | default({}))
+      }}
+    proxmox_vm_provision_ide_payload: >-
+      {{
+        (proxmox_vm_provision_proxmox_vm.ide | default({}))
+        | combine(
+            {'ide2': (proxmox_vm_provision_ide2
+              | default(proxmox_vm_provision_proxmox_vm.ide2))},
+            recursive=True
+          )
+        if (proxmox_vm_provision_ide2 is defined
+            or proxmox_vm_provision_proxmox_vm.ide2 is defined)
+        else (proxmox_vm_provision_proxmox_vm.ide | default({}))
+      }}
+    proxmox_vm_provision_sata_payload: >-
+      {{
+        (proxmox_vm_provision_proxmox_vm.sata | default({}))
+        | combine(
+            {'sata0': proxmox_vm_provision_proxmox_vm.sata0},
+            recursive=True
+          )
+        if proxmox_vm_provision_proxmox_vm.sata0 is defined
+        else (proxmox_vm_provision_proxmox_vm.sata | default({}))
+      }}
+    proxmox_vm_provision_ipconfig_payload: >-
+      {{
+        (proxmox_vm_provision_proxmox_vm.ipconfig | default({}))
+        | combine(
+            {'ipconfig0': proxmox_vm_provision_proxmox_vm.ipconfig0},
+            recursive=True
+          )
+        if proxmox_vm_provision_proxmox_vm.ipconfig0 is defined
+        else (proxmox_vm_provision_proxmox_vm.ipconfig | default({}))
+      }}
+
+- name: Stop existing VM before non-clone update reconciliation
+  community.proxmox.proxmox_kvm:
+    api_user: "{{ proxmox_vm_provision_proxmox_api_user }}"
+    api_password: "{{ proxmox_api_password }}"
+    api_host: "{{ proxmox_vm_provision_proxmox_api_host }}"
+    node: "{{ proxmox_vm_provision_proxmox_vm.node }}"
+    vmid: "{{ proxmox_vm_provision_target_vmid }}"
+    state: stopped
+    timeout: "{{ proxmox_vm_provision_stop_timeout }}"
+  when:
+    - not proxmox_vm_provision_is_clone_mode
+    - proxmox_vm_provision_effective_update | bool
+    - proxmox_vm_provision_vm_check is not failed
+    - proxmox_vm_provision_proxmox_vm_start_after_create | bool
+  no_log: "{{ proxmox_vm_provision_no_log | bool }}"
+  connection: local
+  become: false
+
+- name: Create or update Proxmox VM
+  community.proxmox.proxmox_kvm:
+    api_user: "{{ proxmox_vm_provision_proxmox_api_user }}"
+    api_password: "{{ proxmox_api_password }}"
+    api_host: "{{ proxmox_vm_provision_proxmox_api_host }}"
+    clone: "{{ proxmox_vm_provision_proxmox_vm.clone | default(omit) }}"
+    newid: >-
+      {{ proxmox_vm_provision_proxmox_vm.newid
+      | default(proxmox_vm_provision_proxmox_vm.vmid if proxmox_vm_provision_is_clone_mode else omit) }}
+    full: "{{ proxmox_vm_provision_proxmox_vm.full | default(omit) }}"
+    storage: "{{ proxmox_vm_provision_proxmox_vm.storage | default(omit) }}"
+    format: "{{ proxmox_vm_provision_proxmox_vm.format | default(omit) }}"
+    update: >-
+      {{ proxmox_vm_provision_effective_update | bool
+      if not proxmox_vm_provision_is_clone_mode else omit }}
+    update_unsafe: "{{ proxmox_vm_provision_proxmox_vm.get('update_unsafe', omit) }}"
+    node: "{{ proxmox_vm_provision_proxmox_vm.node }}"
+    vmid: >-
+      {{ proxmox_vm_provision_proxmox_vm.clone_source_vmid
+      if proxmox_vm_provision_is_clone_mode and proxmox_vm_provision_proxmox_vm.clone_source_vmid is defined
+      else (proxmox_vm_provision_proxmox_vm.vmid if not proxmox_vm_provision_is_clone_mode else omit) }}
+    name: "{{ proxmox_vm_provision_proxmox_vm.name }}"
+    memory: "{{ proxmox_vm_provision_proxmox_vm.memory | default(omit) }}"
+    cores: "{{ proxmox_vm_provision_proxmox_vm.cores | default(omit) }}"
+    sockets: "{{ proxmox_vm_provision_proxmox_vm.sockets | default(omit) }}"
+    scsi: >-
+      {{ proxmox_vm_provision_scsi_payload
+      if (proxmox_vm_provision_scsi_payload | length > 0) else omit }}
+    virtio: >-
+      {{ proxmox_vm_provision_virtio_payload
+      if (proxmox_vm_provision_virtio_payload | length > 0) else omit }}
+    ide: >-
+      {{ proxmox_vm_provision_ide_payload
+      if (proxmox_vm_provision_ide_payload | length > 0) else omit }}
+    sata: >-
+      {{ proxmox_vm_provision_sata_payload
+      if (proxmox_vm_provision_sata_payload | length > 0) else omit }}
+    net: >-
+      {{ proxmox_vm_provision_net_payload
+      if (proxmox_vm_provision_net_payload | length > 0) else omit }}
+    scsihw: "{{ proxmox_vm_provision_proxmox_vm.scsihw | default(omit) }}"
+    boot: "{{ proxmox_vm_provision_proxmox_vm.boot | default(omit) }}"
+    serial: "{{ proxmox_vm_provision_proxmox_vm.serial | default(omit) }}"
+    vga: "{{ proxmox_vm_provision_proxmox_vm.vga | default(omit) }}"
+    ostype: "{{ proxmox_vm_provision_proxmox_vm.ostype | default(omit) }}"
+    ciuser: "{{ proxmox_vm_provision_proxmox_vm.ciuser | default(omit) }}"
+    cipassword: "{{ proxmox_vm_provision_proxmox_vm.cipassword | default(omit) }}"
+    citype: "{{ proxmox_vm_provision_proxmox_vm.citype | default(omit) }}"
+    ipconfig: >-
+      {{ proxmox_vm_provision_ipconfig_payload
+      if (proxmox_vm_provision_ipconfig_payload | length > 0) else omit }}
+    nameservers: "{{ proxmox_vm_provision_proxmox_vm.nameservers | default(omit) }}"
+    searchdomains: "{{ proxmox_vm_provision_proxmox_vm.searchdomains | default(omit) }}"
+    sshkeys: >-
+      {{ lookup('file', proxmox_vm_provision_ssh_public_key_path_resolved)
+      if proxmox_vm_provision_ssh_public_key_path | length > 0 else omit }}
+    state: present
+  register: proxmox_vm_provision_result
+  no_log: "{{ proxmox_vm_provision_no_log | bool }}"
+  connection: local
+  become: false
+
+- name: Stop cloned VM before applying post-clone configuration
+  community.proxmox.proxmox_kvm:
+    api_user: "{{ proxmox_vm_provision_proxmox_api_user }}"
+    api_password: "{{ proxmox_api_password }}"
+    api_host: "{{ proxmox_vm_provision_proxmox_api_host }}"
+    node: "{{ proxmox_vm_provision_proxmox_vm.node }}"
+    vmid: "{{ proxmox_vm_provision_target_vmid }}"
+    state: stopped
+    timeout: "{{ proxmox_vm_provision_stop_timeout }}"
+  register: proxmox_vm_provision_clone_stop_result
+  failed_when: >-
+    proxmox_vm_provision_clone_stop_result is failed and
+    ('Reached timeout while waiting for stopping VM'
+      not in (proxmox_vm_provision_clone_stop_result.msg | default('')))
+  when:
+    - proxmox_vm_provision_is_clone_mode
+    - proxmox_vm_provision_proxmox_vm_start_after_create | bool
+  no_log: "{{ proxmox_vm_provision_no_log | bool }}"
+  connection: local
+  become: false
+
+- name: Apply post-clone VM configuration update
+  community.proxmox.proxmox_kvm:
+    api_user: "{{ proxmox_vm_provision_proxmox_api_user }}"
+    api_password: "{{ proxmox_api_password }}"
+    api_host: "{{ proxmox_vm_provision_proxmox_api_host }}"
+    update: true
+    node: "{{ proxmox_vm_provision_proxmox_vm.node }}"
+    vmid: "{{ proxmox_vm_provision_target_vmid }}"
+    name: "{{ proxmox_vm_provision_proxmox_vm.name }}"
+    update_unsafe: "{{ proxmox_vm_provision_proxmox_vm.get('update_unsafe', omit) }}"
+    memory: "{{ proxmox_vm_provision_proxmox_vm.memory | default(omit) }}"
+    cores: "{{ proxmox_vm_provision_proxmox_vm.cores | default(omit) }}"
+    sockets: "{{ proxmox_vm_provision_proxmox_vm.sockets | default(omit) }}"
+    net: >-
+      {{ proxmox_vm_provision_net_payload
+      if (proxmox_vm_provision_net_payload | length > 0) else omit }}
+    boot: "{{ proxmox_vm_provision_proxmox_vm.boot | default(omit) }}"
+    serial: "{{ proxmox_vm_provision_proxmox_vm.serial | default(omit) }}"
+    vga: "{{ proxmox_vm_provision_proxmox_vm.vga | default(omit) }}"
+    ostype: "{{ proxmox_vm_provision_proxmox_vm.ostype | default(omit) }}"
+    ciuser: "{{ proxmox_vm_provision_proxmox_vm.ciuser | default(omit) }}"
+    cipassword: "{{ proxmox_vm_provision_proxmox_vm.cipassword | default(omit) }}"
+    citype: "{{ proxmox_vm_provision_proxmox_vm.citype | default(omit) }}"
+    ipconfig: >-
+      {{ proxmox_vm_provision_ipconfig_payload
+      if (proxmox_vm_provision_ipconfig_payload | length > 0) else omit }}
+    nameservers: "{{ proxmox_vm_provision_proxmox_vm.nameservers | default(omit) }}"
+    searchdomains: "{{ proxmox_vm_provision_proxmox_vm.searchdomains | default(omit) }}"
+    sshkeys: >-
+      {{ lookup('file', proxmox_vm_provision_ssh_public_key_path_resolved)
+      if proxmox_vm_provision_ssh_public_key_path | length > 0 else omit }}
+    state: present
+  when: proxmox_vm_provision_is_clone_mode
+  no_log: "{{ proxmox_vm_provision_no_log | bool }}"
+  connection: local
+  become: false
+
+- name: Resize cloned VM boot disk when disk_size is declared
+  ansible.builtin.command:
+    cmd: >-
+      qm disk resize {{ proxmox_vm_provision_target_vmid }} virtio0
+      {{ proxmox_vm_provision_clone_disk_size_target }}
+  register: proxmox_vm_provision_clone_disk_resize
+  changed_when: >-
+    'image resized' in
+    ((proxmox_vm_provision_clone_disk_resize.stdout | default('')) | lower)
+  failed_when: >-
+    proxmox_vm_provision_clone_disk_resize.rc != 0 and
+    ('already' not in (
+      ((proxmox_vm_provision_clone_disk_resize.stdout | default(''))
+      ~ ' ' ~
+      (proxmox_vm_provision_clone_disk_resize.stderr | default('')))
+      | lower
+    ))
+  vars:
+    ansible_connection: ssh
+    proxmox_vm_provision_clone_disk_size_target: >-
+      {{
+        (proxmox_vm_provision_proxmox_vm.disk_size | string)
+        if ((proxmox_vm_provision_proxmox_vm.disk_size | string)
+            | regex_search('[A-Za-z]$'))
+        else ((proxmox_vm_provision_proxmox_vm.disk_size | string) ~ 'G')
+      }}
+  when:
+    - proxmox_vm_provision_is_clone_mode
+    - proxmox_vm_provision_proxmox_vm.disk_size is defined
+    - (proxmox_vm_provision_proxmox_vm.disk_size | string | length) > 0
+
+- name: Import cloud image as boot disk when requested
+  ansible.builtin.include_tasks: cloud_image.yml
+  when:
+    - not proxmox_vm_provision_is_clone_mode
+    - proxmox_vm_provision_proxmox_vm.cloud_image is defined
+    - proxmox_vm_provision_proxmox_vm.cloud_image.url is defined
+
+- name: Ensure VM is started
+  community.proxmox.proxmox_kvm:
+    api_user: "{{ proxmox_vm_provision_proxmox_api_user }}"
+    api_password: "{{ proxmox_api_password }}"
+    api_host: "{{ proxmox_vm_provision_proxmox_api_host }}"
+    node: "{{ proxmox_vm_provision_proxmox_vm.node }}"
+    vmid: "{{ proxmox_vm_provision_target_vmid }}"
+    state: started
+  when: proxmox_vm_provision_proxmox_vm_start_after_create | bool
+  no_log: "{{ proxmox_vm_provision_no_log | bool }}"
+  connection: local
+  become: false
+
+- name: Run cloud-init cleanup on proxmox node when requested
+  ansible.builtin.include_tasks: cloudinit_cleanup.yml
+  when:
+    - proxmox_vm_provision_proxmox_vm is defined
+    - proxmox_vm_provision_proxmox_vm.cloud_init_user_data is defined
+    - (proxmox_vm_provision_proxmox_vm.cloud_init_user_data.advanced.cleanup_remote_iso
+       | default(proxmox_vm_provision_proxmox_vm_cloud_init_cleanup_remote)) | bool
+
+- name: Run post-provision SSH wait and dynamic inventory registration
+  ansible.builtin.include_tasks: post_provision.yml
+  when: proxmox_vm_provision_wait_for_ssh | bool

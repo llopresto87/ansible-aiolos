@@ -1,0 +1,4 @@
+---
+# openwrt_sshkey defaults
+# openwrt_ssh:
+#   pub_key_path: files/ssh_keys/infrastructure.pub

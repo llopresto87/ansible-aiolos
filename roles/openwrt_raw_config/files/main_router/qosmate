@@ -1,0 +1,170 @@
+
+config global 'global'
+	option enabled '0'
+
+config settings 'settings'
+	option WAN 'wwan0'
+	option DOWNRATE '300000'
+	option UPRATE '40000'
+	option ROOT_QDISC 'hybrid'
+
+config advanced 'advanced'
+	option PRESERVE_CONFIG_FILES '1'
+	option WASHDSCPUP '0'
+	option WASHDSCPDOWN '1'
+	option BWMAXRATIO '20'
+	option UDP_RATE_LIMIT_ENABLED '0'
+	option TCP_UPGRADE_ENABLED '1'
+	option TCP_DOWNPRIO_INITIAL_ENABLED '1'
+	option TCP_DOWNPRIO_SUSTAINED_ENABLED '1'
+	option MSS '536'
+	option NFT_HOOK 'forward'
+	option NFT_PRIORITY '0'
+	option MAX_CONNECTIONS '0'
+	option COMMON_LINK_PRESETS 'ethernet'
+
+config hfsc 'hfsc'
+	option gameqdisc 'pfifo'
+	option nongameqdisc 'cake'
+	option nongameqdiscoptions 'diffserv8 ack-filter'
+	option MAXDEL '10'
+	option PFIFOMIN '5'
+	option PACKETSIZE '450'
+	option netemdelayms '20'
+	option netemjitterms '7'
+	option netemdist 'normal'
+	option pktlossp 'none'
+	option netem_direction 'both'
+
+config cake 'cake'
+	option PRIORITY_QUEUE_INGRESS 'diffserv8'
+	option PRIORITY_QUEUE_EGRESS 'diffserv8'
+	option HOST_ISOLATION '1'
+	option NAT_INGRESS '1'
+	option NAT_EGRESS '1'
+	option ACK_FILTER_EGRESS 'auto'
+	option AUTORATE_INGRESS '1'
+	option RTT '5'
+
+config custom_rules 'custom_rules'
+
+config ipset
+	option name 'bulk_devices'
+	option mode 'static'
+	option family 'ipv4'
+	list ip4 '192.168.1.70'
+	list ip4 '192.168.1.71'
+	option enabled '1'
+
+config ipset
+	option name 'voice_services_v4'
+	option mode 'dynamic'
+	option family 'ipv4'
+	option timeout '2h'
+	option enabled '1'
+
+config ipset
+	option name 'streaming_services_v4'
+	option mode 'dynamic'
+	option family 'ipv4'
+	option timeout '2h'
+	option enabled '1'
+
+config ipset
+	option name 'ai_services_v4'
+	option mode 'dynamic'
+	option family 'ipv4'
+	option timeout '2h'
+	option enabled '1'
+
+config ipset
+	option name 'lol_pc_v4'
+	option mode 'static'
+	option family 'ipv4'
+	option enabled '1'
+	list ip4 '192.0.2.212'
+
+config ipset
+	option name 'riot_lol_v4'
+	option mode 'dynamic'
+	option family 'ipv4'
+	option timeout '2h'
+	option enabled '1'
+
+config rule
+	option name 'Voice services'
+	list dest_ip '@voice_services_v4'
+	option class 'af41'
+	option counter '1'
+	option enabled '1'
+
+config rule
+	option name 'LoL direct outbound'
+	option proto 'udp'
+	list src_ip '@lol_pc_v4'
+	list dest_port '5000-5500'
+	list dest_port '7000-8000'
+	option class 'cs5'
+	option counter '1'
+	option enabled '1'
+
+config rule
+	option name 'LoL direct inbound'
+	option proto 'udp'
+	list dest_ip '@lol_pc_v4'
+	list src_port '5000-5500'
+	list src_port '7000-8000'
+	option class 'cs5'
+	option counter '1'
+	option enabled '1'
+
+config ipset
+	option name 'steam_services_v4'
+	option mode 'dynamic'
+	option family 'ipv4'
+	option timeout '2h'
+	option enabled '1'
+
+config rule
+	option name 'VPN OpenVPN bulk'
+	option proto 'tcp udp'
+	list dest_port '1194'
+	list dest_port '1231-1234'
+	option class 'cs1'
+	option counter '1'
+	option enabled '1'
+
+config rule
+	option name 'Teams audio outbound'
+	option proto 'udp'
+	list dest_port '3479'
+	option class 'ef'
+	option counter '1'
+	option enabled '1'
+
+config rule
+	option name 'Teams audio inbound'
+	option proto 'udp'
+	list src_port '3479'
+	option class 'ef'
+	option counter '1'
+	option enabled '1'
+
+config rule
+	option name 'Teams media outbound'
+	option proto 'udp'
+	list dest_port '3478'
+	list dest_port '3480-3481'
+	option class 'af41'
+	option counter '1'
+	option enabled '1'
+
+config rule
+	option name 'Teams media inbound'
+	option proto 'udp'
+	list src_port '3478'
+	list src_port '3480-3481'
+	option class 'af41'
+	option counter '1'
+	option enabled '1'
+

@@ -1,0 +1,12 @@
+---
+# apt_install_packages defaults
+
+# Packages to install (list of package names)
+# apt_install_packages_packages: []
+
+# Upgrade modes (set via group_vars or extra vars)
+# apt_install_packages_full_upgrade: false
+# apt_install_packages_safe_upgrade: false
+
+# Temporary DNS server for resolv.conf override during upgrades
+apt_install_packages_temp_dns: "192.0.2.11"

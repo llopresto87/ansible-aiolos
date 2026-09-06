@@ -1,0 +1,190 @@
+---
+- name: Validate required proxmox_container fields
+  ansible.builtin.assert:
+    that:
+      - proxmox_api_password is defined
+      - proxmox_container is defined
+      - proxmox_container.vmid is defined
+      - proxmox_container.container_name is defined
+      - proxmox_container.template_name is defined
+      - proxmox_container.storage_pool is defined
+      - proxmox_container.cores is defined
+      - proxmox_container.memory is defined
+      - proxmox_container.swap is defined
+      - proxmox_container.disk is defined
+      - proxmox_container.ip_address is defined
+      - proxmox_container.gateway is defined
+      - proxmox_container.network_bridge is defined
+      - proxmox_container.dns is defined
+      - proxmox_container.password is defined
+      - >-
+        proxmox_container.ssh_public_key_path is defined or
+        proxmox_container.public_key is defined
+    fail_msg: proxmox_container contract is incomplete for LXC provisioning
+
+- name: Enforce non-default LXC credentials policy
+  ansible.builtin.assert:
+    that:
+      - (proxmox_container.password | string | length) >= 16
+      - (proxmox_container.password | string) is match('.*[A-Z].*')
+      - (proxmox_container.password | string) is match('.*[a-z].*')
+      - (proxmox_container.password | string) is match('.*[0-9].*')
+      - (proxmox_container.password | string) is match('.*[^A-Za-z0-9].*')
+      - main_user is not defined or main_user not in ['ansible', 'root', 'admin', 'ubuntu', 'debian', 'cloud-user']
+    fail_msg: >-
+      LXC contracts must use a strong password (>=16 chars, mixed upper/lower/digit/special)
+      and a non-default technical user when main_user is defined.
+
+- name: Ensure cleanup patterns have replacement lines
+  ansible.builtin.assert:
+    that:
+      - >-
+        (proxmox_container.lxc_conf_cleanup_patterns | default([]) | length == 0)
+        or (proxmox_container.lxc_conf_lines | default([]) | length > 0)
+    fail_msg: >-
+      proxmox_container.lxc_conf_cleanup_patterns is set without
+      proxmox_container.lxc_conf_lines. This would remove custom LXC config
+      lines without reapplying them.
+
+- name: Resolve LXC SSH public key path
+  ansible.builtin.set_fact:
+    proxmox_lxc_provision_ssh_public_key_path: >-
+      {{ proxmox_container.ssh_public_key_path
+      | default(proxmox_container.public_key) }}
+
+- name: Check LXC SSH public key path as provided
+  ansible.builtin.stat:
+    path: "{{ proxmox_lxc_provision_ssh_public_key_path }}"
+  delegate_to: localhost
+  become: false
+  register: proxmox_lxc_provision_ssh_public_key_stat
+
+- name: Check LXC SSH public key path relative to repository root
+  ansible.builtin.stat:
+    path: "{{ playbook_dir }}/../../{{ proxmox_lxc_provision_ssh_public_key_path }}"
+  delegate_to: localhost
+  become: false
+  register: proxmox_lxc_provision_ssh_public_key_repo_stat
+  when:
+    - not proxmox_lxc_provision_ssh_public_key_stat.stat.exists
+    - proxmox_lxc_provision_ssh_public_key_path is not match('^/')
+
+- name: Assert LXC SSH public key path exists
+  ansible.builtin.assert:
+    that:
+      - >-
+        proxmox_lxc_provision_ssh_public_key_stat.stat.exists
+        or (proxmox_lxc_provision_ssh_public_key_repo_stat is defined
+        and proxmox_lxc_provision_ssh_public_key_repo_stat.stat.exists)
+    fail_msg: >-
+      Unable to resolve SSH public key path
+      '{{ proxmox_lxc_provision_ssh_public_key_path }}'.
+      Provide an absolute path or a repository-relative path.
+
+- name: Resolve final LXC SSH public key path for lookup
+  ansible.builtin.set_fact:
+    proxmox_lxc_provision_ssh_public_key_path_resolved: >-
+      {{ proxmox_lxc_provision_ssh_public_key_path
+      if proxmox_lxc_provision_ssh_public_key_stat.stat.exists
+      else playbook_dir ~ '/../../' ~ proxmox_lxc_provision_ssh_public_key_path }}
+
+- name: Warn when using legacy proxmox_container.public_key
+  ansible.builtin.debug:
+    msg: >-
+      proxmox_container.public_key is deprecated; prefer
+      proxmox_container.ssh_public_key_path.
+  when:
+    - proxmox_container.ssh_public_key_path is not defined
+    - proxmox_container.public_key is defined
+
+- name: Create or update Proxmox LXC container
+  community.proxmox.proxmox:
+    vmid: "{{ proxmox_container.vmid }}"
+    node: "{{ inventory_hostname }}"
+    api_user: "{{ proxmox_lxc_provision_proxmox_api_user }}"
+    api_password: "{{ proxmox_api_password }}"
+    api_host: "{{ proxmox_lxc_provision_proxmox_api_host }}"
+    hostname: "{{ proxmox_container.container_name }}"
+    ostemplate: "{{ proxmox_lxc_provision_proxmox_lxc_template_prefix }}/{{ proxmox_container.template_name }}"
+    storage: "{{ proxmox_container.storage_pool }}"
+    password: "{{ proxmox_container.password }}"
+    cores: "{{ proxmox_container.cores }}"
+    memory: "{{ proxmox_container.memory }}"
+    swap: "{{ proxmox_container.swap }}"
+    disk: >-
+      {{
+        proxmox_container.disk
+        if (proxmox_container.disk | string) is search(':')
+        else proxmox_container.storage_pool ~ ':' ~ (proxmox_container.disk | string)
+      }}
+    netif: >-
+      {"net0":"name=eth0,ip={{ proxmox_container.ip_address }},gw={{
+      proxmox_container.gateway }},bridge={{
+      proxmox_container.network_bridge }}"}
+    features: "{{ proxmox_container.features | default(proxmox_lxc_provision_default_features) }}"
+    state: present
+    nameserver: "{{ proxmox_container.dns }}"
+    pubkey: "{{ lookup('file', proxmox_lxc_provision_ssh_public_key_path_resolved) }}"
+  register: proxmox_lxc_provision_result
+  no_log: "{{ proxmox_lxc_provision_no_log | bool }}"
+  delegate_to: localhost
+  become: false
+
+- name: Remove conflicting custom LXC config lines
+  ansible.builtin.lineinfile:
+    path: "/etc/pve/lxc/{{ proxmox_container.vmid }}.conf"
+    regexp: "{{ item }}"
+    state: absent
+  loop: "{{ proxmox_container.lxc_conf_cleanup_patterns | default([]) }}"
+  when: (proxmox_container.lxc_conf_cleanup_patterns | default([])) | length > 0
+  register: proxmox_lxc_provision_lxc_conf_cleanup_result
+
+- name: Apply additional custom LXC config lines
+  ansible.builtin.lineinfile:
+    path: "/etc/pve/lxc/{{ proxmox_container.vmid }}.conf"
+    line: "{{ item }}"
+    state: present
+  loop: "{{ proxmox_container.lxc_conf_lines | default([]) }}"
+  when: (proxmox_container.lxc_conf_lines | default([])) | length > 0
+  register: proxmox_lxc_provision_lxc_conf_apply_result
+
+- name: Determine whether LXC restart is required
+  ansible.builtin.set_fact:
+    proxmox_lxc_provision_restart_required: >-
+      {{
+        (proxmox_lxc_provision_lxc_conf_cleanup_result is defined
+        and (proxmox_lxc_provision_lxc_conf_cleanup_result.changed | default(false)))
+        or
+        (proxmox_lxc_provision_lxc_conf_apply_result is defined
+        and (proxmox_lxc_provision_lxc_conf_apply_result.changed | default(false)))
+      }}
+
+- name: Stop LXC container to apply updated custom config
+  community.proxmox.proxmox:
+    vmid: "{{ proxmox_container.vmid }}"
+    node: "{{ inventory_hostname }}"
+    api_user: "{{ proxmox_lxc_provision_proxmox_api_user }}"
+    api_password: "{{ proxmox_api_password }}"
+    api_host: "{{ proxmox_lxc_provision_proxmox_api_host }}"
+    hostname: "{{ proxmox_container.container_name }}"
+    state: stopped
+  when:
+    - proxmox_lxc_provision_proxmox_lxc_start_after_create | bool
+    - proxmox_lxc_provision_restart_required | bool
+  no_log: "{{ proxmox_lxc_provision_no_log | bool }}"
+  delegate_to: localhost
+  become: false
+
+- name: Ensure LXC container is started
+  community.proxmox.proxmox:
+    vmid: "{{ proxmox_container.vmid }}"
+    node: "{{ inventory_hostname }}"
+    api_user: "{{ proxmox_lxc_provision_proxmox_api_user }}"
+    api_password: "{{ proxmox_api_password }}"
+    api_host: "{{ proxmox_lxc_provision_proxmox_api_host }}"
+    hostname: "{{ proxmox_container.container_name }}"
+    state: started
+  when: proxmox_lxc_provision_proxmox_lxc_start_after_create | bool
+  no_log: "{{ proxmox_lxc_provision_no_log | bool }}"
+  delegate_to: localhost
+  become: false

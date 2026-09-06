@@ -1,0 +1,146 @@
+version: '3.9'
+
+services:
+{% for service_name, service in composer.services.items() %}
+  {{ service_name }}:
+{%   if service.container_name is defined %}
+    container_name: {{ service.container_name }}
+{%   endif %}
+
+{%   if service.image is defined %}
+    image: {{ service.image }}
+{%   endif %}
+
+{%   if service.build is defined %}
+    build:
+{%     if service.build.context is defined %}
+      context: {{ service.build.context }}
+{%     endif %}
+{%     if service.build.dockerfile is defined %}
+      dockerfile: {{ service.build.dockerfile }}
+{%     endif %}
+{%     if service.build.args is defined and service.build.args|length > 0 %}
+      args:
+{%       for k, v in service.build.args.items() %}
+        {{ k }}: {{ v }}
+{%       endfor %}
+{%     endif %}
+{%   endif %}
+
+{%   if service.extends is defined %}
+    extends:
+{%     if service.extends.file is defined %}
+      file: {{ service.extends.file }}
+{%     endif %}
+{%     if service.extends.service is defined %}
+      service: {{ service.extends.service }}
+{%     endif %}
+{%   endif %}
+
+{%   if service.env_file is defined and service.env_file|length > 0 %}
+    env_file:
+{%     for ef in service.env_file %}
+      - {{ ef }}
+{%     endfor %}
+{%   endif %}
+
+{%   if service.environment is defined and service.environment|length > 0 %}
+    environment:
+{%     for k, v in service.environment.items() %}
+      {{ k }}: {{ v }}
+{%     endfor %}
+{%   endif %}
+
+{%   if service.volumes is defined and service.volumes|length > 0 %}
+    volumes:
+{%     for volume in service.volumes %}
+      - {{ volume }}
+{%     endfor %}
+{%   endif %}
+
+{%   if service.ports is defined and service.ports|length > 0 %}
+    ports:
+{%     for port in service.ports %}
+      - "{{ port }}"
+{%     endfor %}
+{%   endif %}
+
+{%   if service.depends_on is defined and service.depends_on|length > 0 %}
+    depends_on:
+{%     for dep in service.depends_on %}
+      - {{ dep }}
+{%     endfor %}
+{%   endif %}
+
+{%   if service.networks is defined and service.networks|length > 0 %}
+    networks:
+{%     for net in service.networks %}
+      - {{ net }}
+{%     endfor %}
+{%   endif %}
+
+    restart: {{ service.restart | default('no') }}
+
+{%   if service.healthcheck is defined %}
+    healthcheck:
+{%     if service.healthcheck.disable is defined %}
+      disable: {{ service.healthcheck.disable }}
+{%     endif %}
+{%     if service.healthcheck.test is defined %}
+      test: {{ service.healthcheck.test }}
+{%     endif %}
+{%     if service.healthcheck.interval is defined %}
+      interval: {{ service.healthcheck.interval }}
+{%     endif %}
+{%     if service.healthcheck.timeout is defined %}
+      timeout: {{ service.healthcheck.timeout }}
+{%     endif %}
+{%     if service.healthcheck.retries is defined %}
+      retries: {{ service.healthcheck.retries }}
+{%     endif %}
+{%   endif %}
+
+{%   if service.logging is defined %}
+    logging:
+      driver: {{ service.logging.driver | default('json-file') }}
+{%     if service.logging.options is defined and service.logging.options|length > 0 %}
+      options:
+{%       for k, v in service.logging.options.items() %}
+        {{ k }}: {{ v }}
+{%       endfor %}
+{%     endif %}
+{%   endif %}
+
+{% endfor %}
+
+{% if composer.networks is defined and composer.networks|length > 0 %}
+networks:
+{%   for network_name, network in composer.networks.items() %}
+  {{ network_name }}:
+{%     if network.driver is defined %}
+    driver: {{ network.driver }}
+{%     endif %}
+{%     if network.ipam is defined %}
+    ipam:
+      config:
+        - subnet: {{ network.ipam.subnet }}
+          gateway: {{ network.ipam.gateway }}
+{%     endif %}
+{%   endfor %}
+{% endif %}
+
+{% if composer.volumes is defined and composer.volumes|length > 0 %}
+volumes:
+{%   for volume_name, volume in composer.volumes.items() %}
+  {{ volume_name }}:
+{%     if volume.driver is defined %}
+    driver: {{ volume.driver }}
+{%     endif %}
+{%     if volume.driver_opts is defined and volume.driver_opts|length > 0 %}
+    driver_opts:
+{%       for k, v in volume.driver_opts.items() %}
+      {{ k }}: {{ v }}
+{%       endfor %}
+{%     endif %}
+{%   endfor %}
+{% endif %}

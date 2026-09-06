@@ -1,0 +1,6 @@
+---
+- name: Update Pi-hole blocklists from container inventory
+  hosts: localhost
+  gather_facts: false
+  roles:
+    - pihole_blocklist

@@ -1,0 +1,35 @@
+---
+- name: Validate desired LXC state
+  ansible.builtin.assert:
+    that:
+      - proxmox_lxc_state_proxmox_lxc_desired_state in ['started', 'stopped']
+      - proxmox_container is defined
+      - proxmox_container.vmid is defined
+      - proxmox_lxc_state_proxmox_api_user is defined
+      - proxmox_api_password is defined
+      - proxmox_lxc_state_proxmox_api_host is defined
+    fail_msg: >-
+      Define proxmox_lxc_state_proxmox_api_user, proxmox_api_password,
+      proxmox_lxc_state_proxmox_api_host, and proxmox_container.vmid,
+      and set proxmox_lxc_state_proxmox_lxc_desired_state to started or stopped.
+
+- name: Resolve target Proxmox node for LXC state actions
+  ansible.builtin.set_fact:
+    proxmox_lxc_state_target_node: >-
+      {{ proxmox_container.node | default(inventory_hostname) }}
+
+- name: Validate target Proxmox node
+  ansible.builtin.assert:
+    that:
+      - proxmox_lxc_state_target_node | length > 0
+    fail_msg: proxmox_container.node must be non-empty when provided.
+
+- name: Set LXC runtime state
+  community.proxmox.proxmox:
+    api_user: "{{ proxmox_lxc_state_proxmox_api_user }}"
+    api_password: "{{ proxmox_api_password }}"
+    api_host: "{{ proxmox_lxc_state_proxmox_api_host }}"
+    node: "{{ proxmox_lxc_state_target_node }}"
+    vmid: "{{ proxmox_container.vmid }}"
+    state: "{{ proxmox_lxc_state_proxmox_lxc_desired_state }}"
+  no_log: true

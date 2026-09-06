@@ -1,0 +1,28 @@
+---
+# Example group vars for pve0.example.lan (basic Proxmox node)
+# Before initializing SSH keys, set ansible_password via vault:
+# ansible_password: !vault |
+#   # Run: ansible-vault encrypt_string 'your_bootstrap_password'
+#   $ANSIBLE_VAULT;1.1;AES256
+#   00000000000000000000000000000000
+
+os: debian
+hostname: "pve0.example.lan"
+ssh_key_type: cluster
+ssh_hardening_disable_ssh_password: true
+proxmox_i915_power_enabled: true
+proxmox_vfio_enabled: true
+proxmox_cpu_governor_governor: powersave
+bridge_settings:
+  use_openvswitch: true
+  bridges:
+    - name: vmbr0         # Name of the bridge
+      nics:
+        - enp1s0
+        - enp3s0 # Network interfaces to be bridged for connectivity
+      ip: 192.0.2.222/24
+      gateway: 192.0.2.1
+      mtu: 1440
+
+    - name: vmbr000       # Name of another bridge, if needed
+      mtu: 1440

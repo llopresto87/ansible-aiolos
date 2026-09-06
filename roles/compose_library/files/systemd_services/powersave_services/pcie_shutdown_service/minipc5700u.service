@@ -1,0 +1,17 @@
+[Unit]
+Description=Set PCI power control
+After=sys-subsystem-net-devices-eth0.device
+After=sys-subsystem-net-devices-eth1.device
+After=sys-subsystem-net-devices-eth2.device
+# Add any other dependencies as needed
+[Service]
+Type=oneshot
+ExecStart=/bin/bash -c "\
+echo '1' > '/sys/bus/pci/devices/0000:04:00.0/remove' && \
+echo '1' > '/sys/bus/pci/devices/0000:04:00.5/remove'&&  \
+echo '1' > '/sys/bus/pci/devices/0000:05:00.1/remove' && \
+echo '1' > '/sys/bus/pci/devices/0000:05:00.0/remove' && \
+powertop --auto-tune && \ 
+for cpu in /sys/devices/system/cpu/cpu*/cpufreq/energy_performance_preference; do     echo balance_performance | tee "$cpu"; done "
+[Install]
+WantedBy=multi-user.target

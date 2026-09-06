@@ -1,0 +1,44 @@
+---
+- name: Configure i915 module parameters
+  ansible.builtin.copy:
+    src: i915.conf
+    dest: /etc/modprobe.d/i915.conf
+    owner: root
+    group: root
+    mode: "0644"
+  register: proxmox_i915_power_proxmox_i915_conf
+  when: proxmox_i915_power_enabled | default(false) | bool
+
+- name: Install i915 PCI power control service unit
+  ansible.builtin.template:
+    src: set_pci_power_control.service.j2
+    dest: "/etc/systemd/system/{{ proxmox_i915_power_proxmox_i915_service_name }}.service"
+    owner: root
+    group: root
+    mode: "0644"
+  register: proxmox_i915_power_proxmox_i915_service
+  when: proxmox_i915_power_enabled | default(false) | bool
+
+- name: Rebuild initramfs after i915 configuration changes
+  ansible.builtin.command:
+    cmd: update-initramfs -u -k all
+  changed_when: true
+  when:
+    - proxmox_i915_power_enabled | default(false) | bool
+    - proxmox_i915_power_proxmox_i915_conf is changed
+
+- name: Update grub after i915 configuration changes
+  ansible.builtin.command:
+    cmd: update-grub
+  changed_when: true
+  when:
+    - proxmox_i915_power_enabled | default(false) | bool
+    - proxmox_i915_power_proxmox_i915_conf is changed
+
+- name: Enable and start i915 PCI power control service
+  ansible.builtin.systemd:
+    name: "{{ proxmox_i915_power_proxmox_i915_service_name }}"
+    daemon_reload: true
+    enabled: true
+    state: started
+  when: proxmox_i915_power_enabled | default(false) | bool

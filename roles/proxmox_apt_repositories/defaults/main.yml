@@ -1,0 +1,4 @@
+---
+# proxmox_apt_repositories defaults
+# No required variables — role removes enterprise repos
+# and configures no-subscription repositories

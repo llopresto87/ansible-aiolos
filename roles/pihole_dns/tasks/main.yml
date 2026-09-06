@@ -1,0 +1,120 @@
+---
+- name: Initialize Pi-hole DNS source lists
+  ansible.builtin.set_fact:
+    pihole_dns_static_servers: "{{ servers | default([]) }}"
+    pihole_dns_inventory_servers: []
+    pihole_dns_route_hosts: []
+    pihole_dns_proxy_servers: []
+
+- name: Merge inventory hosts into DNS server list
+  ansible.builtin.set_fact:
+    pihole_dns_inventory_servers: >-
+      {{ pihole_dns_inventory_servers + [
+      {
+        'ip': hostvars[item].ansible_host,
+        'hostname': (item if '.' in item
+          else item ~ '.' ~ pihole_dns_default_domain_suffix)
+      }
+      ] }}
+  loop: "{{ groups['all'] | default([]) }}"
+  when:
+    - pihole_dns_merge_inventory_hosts | bool
+    - hostvars[item].ansible_host is defined
+    - hostvars[item].ansible_host | length > 0
+
+- name: Build host and proxy route mapping list
+  ansible.builtin.set_fact:
+    pihole_dns_route_hosts: >-
+      {{ pihole_dns_route_hosts + [
+      {
+        'host': item,
+        'routes': hostvars[item].proxy_publish | default([])
+      }
+      ] }}
+  loop: "{{ groups['all'] | default([]) }}"
+  when: pihole_dns_merge_proxy_domains | bool
+
+- name: Resolve proxy target IP for published domains
+  ansible.builtin.set_fact:
+    pihole_dns_proxy_target_ip: >-
+      {{ hostvars[(groups[pihole_dns_proxy_group] | first)].ansible_host }}
+  when:
+    - pihole_dns_merge_proxy_domains | bool
+    - groups[pihole_dns_proxy_group] | default([]) | length > 0
+    - hostvars[(groups[pihole_dns_proxy_group] | first)].ansible_host is defined
+
+- name: Merge proxy-published domains into DNS list
+  ansible.builtin.set_fact:
+    pihole_dns_proxy_servers: >-
+      {{ pihole_dns_proxy_servers + [
+      {
+        'ip': pihole_dns_proxy_target_ip,
+        'hostname': item.1.domain
+      }
+      ] }}
+  loop: "{{ pihole_dns_route_hosts | subelements('routes', skip_missing=True) }}"
+  when:
+    - pihole_dns_merge_proxy_domains | bool
+    - pihole_dns_proxy_target_ip is defined
+    - item.1.domain is defined
+
+- name: Build proxy hostname exclusion list for inventory records
+  ansible.builtin.set_fact:
+    pihole_dns_proxy_hostnames: >-
+      {{ pihole_dns_proxy_servers
+      | map(attribute='hostname')
+      | list }}
+
+- name: Filter inventory DNS records shadowed by proxy domains
+  ansible.builtin.set_fact:
+    pihole_dns_inventory_servers_filtered: >-
+      {{ pihole_dns_inventory_servers
+      | rejectattr('hostname', 'in', pihole_dns_proxy_hostnames | default([]))
+      | list }}
+
+- name: Build effective Pi-hole DNS server entries
+  ansible.builtin.set_fact:
+    pihole_dns_effective_servers: >-
+      {{
+        (
+          pihole_dns_static_servers
+          + pihole_dns_inventory_servers_filtered
+          + pihole_dns_proxy_servers
+        )
+        | reverse
+        | unique(attribute='hostname')
+        | reverse
+      }}
+
+- name: Validate effective Pi-hole DNS entries
+  ansible.builtin.assert:
+    that:
+      - pihole_dns_effective_servers | length > 0
+    fail_msg: Effective servers[] list is empty after DNS source merge.
+
+- name: Create local generated config folder
+  ansible.builtin.file:
+    path: "{{ playbook_dir }}/generated/{{ inventory_hostname }}"
+    state: directory
+    mode: "0755"
+  delegate_to: localhost
+  become: false
+
+- name: Render custom DNS list locally
+  ansible.builtin.template:
+    src: custom.jinja2
+    dest: "{{ playbook_dir }}/generated/{{ inventory_hostname }}/custom.list"
+    mode: "0644"
+  vars:
+    servers: "{{ pihole_dns_effective_servers }}"
+  delegate_to: localhost
+  become: false
+
+- name: Push custom DNS list to Pi-hole host
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/generated/{{ inventory_hostname }}/custom.list"
+    dest: /etc/pihole/custom.list
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart Pi-hole DNS service

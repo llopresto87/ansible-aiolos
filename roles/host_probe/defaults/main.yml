@@ -1,0 +1,24 @@
+---
+# yamllint disable rule:line-length
+# Defaults for host_probe role
+host_probe_mode: "full-scan"                # 'facts-only' or 'full-scan'
+host_probe_allow_become: true                 # allow become for guarded reads
+host_probe_output_root: "generated"         # root for all generated outputs
+host_probe_group_vars_dir: "{{ host_probe_output_root }}/group_vars"
+host_probe_files_dir: "{{ host_probe_output_root }}/{{ inventory_hostname }}/files"
+
+host_probe_exclude_paths:
+  - /proc
+  - /sys
+  - /dev
+  - /run
+  - /var/lib/docker
+  - /var/lib/containers
+  - /var/lib/libvirt
+  - /root/.ssh
+  - /etc/ssl/private
+  - /var/lib/docker/volumes
+
+host_probe_max_slurp_size_bytes: 1048576
+host_probe_max_files_to_fetch_per_host: 200
+host_probe_sensitive_key_regex: '(?i)pass|secret|token|private|ssh'

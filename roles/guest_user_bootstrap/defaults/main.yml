@@ -1,0 +1,4 @@
+---
+# guest_user_bootstrap defaults
+# main_user: required - username to create
+# install_docker: false - if true, adds user to docker group

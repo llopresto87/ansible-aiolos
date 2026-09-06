@@ -1,0 +1,22 @@
+---
+proxmox_vm_provision_proxmox_api_user: "{{ proxmox_lxc_provision_proxmox_api_user | default('root@pam') }}"
+proxmox_vm_provision_proxmox_api_host: "{{ proxmox_lxc_provision_proxmox_api_host | default(inventory_hostname) }}"
+proxmox_vm_provision_proxmox_vm_start_after_create: true
+proxmox_vm_provision_no_log: true
+# Disk convention: virtioN for boot disks, sata0 for cloud-init/ISO. Never use ide.
+# Cloud-init cleanup defaults
+proxmox_vm_provision_proxmox_vm_cloud_init_cleanup_local: true
+proxmox_vm_provision_proxmox_vm_cloud_init_cleanup_remote: true
+# Post-provision: wait for SSH and register in dynamic inventory
+proxmox_vm_provision_wait_for_ssh: false
+proxmox_vm_provision_ssh_delay: 8
+proxmox_vm_provision_ssh_timeout: 300
+proxmox_vm_provision_dynamic_group: provisioned_vms
+proxmox_vm_provision_stop_timeout: 600
+
+# Cloud-init working directories
+proxmox_vm_provision_cloudinit_local_dir: "generated/cloud_init_user_data"
+proxmox_vm_provision_cloudinit_storage_path: "/var/lib/vz/template/iso"
+
+# Cloud image defaults
+proxmox_vm_provision_cloud_image_dir: "/var/lib/vz/cloud-images"

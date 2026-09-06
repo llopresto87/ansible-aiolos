@@ -1,0 +1,197 @@
+---
+- name: Build declared LXC VMID and IP lists
+  ansible.builtin.set_fact:
+    contract_validation_contract_lxc_vmids: >-
+      {{ ansible_play_hosts_all
+      | map('extract', hostvars)
+      | selectattr('proxmox_container', 'defined')
+      | map(attribute='proxmox_container')
+      | map(attribute='vmid')
+      | list }}
+    contract_validation_contract_lxc_ips: >-
+      {{ ansible_play_hosts_all
+      | map('extract', hostvars)
+      | selectattr('proxmox_container', 'defined')
+      | map(attribute='proxmox_container')
+      | map(attribute='ip_address')
+      | list }}
+    contract_validation_contract_vm_vmids: >-
+      {{ ansible_play_hosts_all
+      | map('extract', hostvars)
+      | selectattr('proxmox_vm_provision_proxmox_vm', 'defined')
+      | map(attribute='proxmox_vm_provision_proxmox_vm')
+      | map(attribute='vmid')
+      | list }}
+  run_once: true
+
+- name: Validate LXC VMID uniqueness across hosts
+  ansible.builtin.assert:
+    that:
+      - contract_validation_contract_lxc_vmids | length == (contract_validation_contract_lxc_vmids | unique | length)
+    fail_msg: >-
+      Duplicate proxmox_container.vmid detected across inventory
+      hosts
+  run_once: true
+
+- name: Validate LXC IP uniqueness across hosts
+  ansible.builtin.assert:
+    that:
+      - contract_validation_contract_lxc_ips | length == (contract_validation_contract_lxc_ips | unique | length)
+    fail_msg: >-
+      Duplicate proxmox_container.ip_address detected across
+      inventory hosts
+  run_once: true
+
+- name: Validate VM VMID uniqueness across hosts
+  ansible.builtin.assert:
+    that:
+      - contract_validation_contract_vm_vmids | length == (contract_validation_contract_vm_vmids | unique | length)
+    fail_msg: >-
+      Duplicate proxmox_vm_provision_proxmox_vm.vmid detected across inventory hosts
+  run_once: true
+
+- name: Validate LXC contract when proxmox_container exists
+  ansible.builtin.assert:
+    that:
+      - proxmox_container.vmid is defined
+      - proxmox_container.container_name is defined
+      - proxmox_container.template_name is defined
+      - proxmox_container.network_bridge is defined
+      - proxmox_container.storage_pool is defined
+      - proxmox_container.memory is defined
+      - proxmox_container.cores is defined
+      - proxmox_container.disk is defined
+      - proxmox_container.swap is defined
+      - proxmox_container.ip_address is defined
+      - proxmox_container.gateway is defined
+      - proxmox_container.dns is defined
+      - >-
+        proxmox_container.node is not defined or
+        proxmox_container.node | length > 0
+      - proxmox_container.ssh_public_key_path is defined
+      - proxmox_container.password is defined
+    fail_msg: proxmox_container contract is incomplete
+  when: proxmox_container is defined
+
+- name: Validate manual LXC state contract when desired state is set
+  ansible.builtin.assert:
+    that:
+      - proxmox_lxc_state_proxmox_lxc_desired_state in ['started', 'stopped']
+      - proxmox_container is defined
+      - proxmox_container.vmid is defined
+      - >-
+        proxmox_container.node is not defined or
+        proxmox_container.node | length > 0
+    fail_msg: >-
+      proxmox_lxc_state_proxmox_lxc_desired_state requires proxmox_container.vmid,
+      with optional non-empty proxmox_container.node.
+  when: proxmox_lxc_state_proxmox_lxc_desired_state is defined
+
+- name: Validate Proxmox API auth for provisioning contracts
+  ansible.builtin.assert:
+    that:
+      - proxmox_api_password is defined
+    fail_msg: proxmox_api_password is required for provisioning actions
+  when: proxmox_container is defined or proxmox_vm_provision_proxmox_vm is defined
+
+- name: Validate VM contract when proxmox_vm_provision_proxmox_vm exists
+  ansible.builtin.assert:
+    that:
+      - proxmox_vm_provision_proxmox_vm.node is defined
+      - proxmox_vm_provision_proxmox_vm.vmid is defined
+      - proxmox_vm_provision_proxmox_vm.name is defined
+    fail_msg: proxmox_vm_provision_proxmox_vm contract is incomplete
+  when: proxmox_vm_provision_proxmox_vm is defined
+
+- name: Validate compose contract when enabled
+  ansible.builtin.assert:
+    that:
+      - main_user is defined
+      - compose_projects | default([]) | length > 0
+    fail_msg: use_compose requires main_user and non-empty compose_projects
+  when: use_compose | default(false) | bool
+
+- name: Validate compose secret variable list type when defined
+  ansible.builtin.assert:
+    that:
+      - compose_secret_vars is sequence
+      - compose_secret_vars is not string
+    fail_msg: compose_secret_vars must be a list of environment variable names
+  when:
+    - use_compose | default(false) | bool
+    - compose_secret_vars is defined
+
+- name: Validate compose secret variables are resolvable
+  ansible.builtin.assert:
+    that:
+      - >-
+        (lookup('ansible.builtin.env', item) | length > 0)
+        or (vars[item | lower] is defined and vars[item | lower] | length > 0)
+    fail_msg: >-
+      Missing compose secret '{{ item }}'. Provide it as an environment
+      variable or as an Ansible variable named '{{ item | lower }}'.
+  loop: "{{ compose_secret_vars | default([]) }}"
+  when: use_compose | default(false) | bool
+
+- name: Validate template compose contract when template source is used
+  ansible.builtin.assert:
+    that:
+      - composer is defined
+      - composer.services is defined
+      - composer.services | length > 0
+    fail_msg: >-
+      compose_source=template requires composer.services to be defined and non-empty
+  when:
+    - use_compose | default(false) | bool
+    - >-
+      (
+        compose_projects | default([])
+        | selectattr('compose_source', 'defined')
+        | selectattr('compose_source', 'equalto', 'template')
+        | list
+        | length
+      ) > 0
+
+- name: Validate pihole servers list when defined
+  ansible.builtin.assert:
+    that:
+      - servers | length > 0
+    fail_msg: servers must be a non-empty list
+  when: servers is defined
+
+- name: Validate each pihole server entry
+  ansible.builtin.assert:
+    that:
+      - item.ip is defined
+      - item.hostname is defined
+    fail_msg: each servers item requires ip and hostname
+  loop: "{{ servers | default([]) }}"
+  when: servers is defined
+
+- name: Validate each proxy_publish entry
+  ansible.builtin.assert:
+    that:
+      - item.domain is defined
+      - item.upstream_host is defined
+      - item.upstream_port is defined
+    fail_msg: each proxy_publish item requires domain, upstream_host, and upstream_port
+  loop: "{{ proxy_publish | default([]) }}"
+  when: proxy_publish is defined
+
+- name: Validate nginx proxy contract when route management is enabled
+  ansible.builtin.assert:
+    that:
+      - main_user is defined
+      - >-
+        nginx_proxy_configure_compose_directory | default('') | length > 0
+    fail_msg: >-
+      nginx proxy route management requires main_user and non-empty
+      nginx_proxy_configure_compose_directory
+  when: nginx_proxy_configure_manage_routes | default(false) | bool
+
+- name: Validate ssh key type when defined
+  ansible.builtin.assert:
+    that:
+      - ssh_key_type in ['cluster', 'infrastructure', 'standard', 'test']
+    fail_msg: ssh_key_type must be cluster, infrastructure, standard, or test
+  when: ssh_key_type is defined

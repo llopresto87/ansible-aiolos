@@ -1,0 +1,49 @@
+---
+# openwrt_sshkey — deploy SSH public key to dropbear authorized_keys
+# Can be used standalone for key rotation.
+
+- name: Validate SSH key contract
+  ansible.builtin.assert:
+    that:
+      - openwrt_ssh is defined
+      - openwrt_ssh.ssh_key_type is defined
+    fail_msg: >-
+      openwrt_ssh.ssh_key_type must be defined to provision
+      SSH keys on OpenWrt
+
+- name: Ensure dropbear authorized_keys directory exists
+  ansible.builtin.file:
+    path: /etc/dropbear
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Deploy SSH public key for root
+  ansible.builtin.copy:
+    content: >-
+      {{ lookup('file',
+      'files/ssh_keys/'
+      + openwrt_ssh.ssh_key_type + '.pub') }}
+    dest: /etc/dropbear/authorized_keys
+    owner: root
+    group: root
+    mode: "0600"
+
+- name: Disable password authentication in dropbear
+  ansible.builtin.shell: >-
+    uci set dropbear.main.PasswordAuth='off' &&
+    uci set dropbear.main.RootPasswordAuth='off' &&
+    uci commit dropbear
+  changed_when: true
+  when: openwrt_ssh.disable_password_auth | default(false) | bool
+  notify: Restart dropbear
+
+- name: Enable password authentication in dropbear
+  ansible.builtin.shell: >-
+    uci set dropbear.main.PasswordAuth='on' &&
+    uci set dropbear.main.RootPasswordAuth='on' &&
+    uci commit dropbear
+  changed_when: true
+  when: not (openwrt_ssh.disable_password_auth | default(false) | bool)
+  notify: Restart dropbear

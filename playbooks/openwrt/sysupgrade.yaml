@@ -1,0 +1,72 @@
+---
+# Sysupgrade workflow for OpenWrt devices.
+#
+# Four plays:
+#   1. Pre-upgrade:  snapshot running configs and deploy sysupgrade.conf
+#   2. Pause:        user performs sysupgrade (LuCI / CLI)
+#   3. Post-upgrade: reinstall python3, packages, push configs, services
+#   4. Verify:       take a post-upgrade config snapshot for the new version
+#
+# Usage:
+#   ansible-playbook -i 04_openwrt/inventory.ini \
+#     playbooks/openwrt/sysupgrade.yaml
+#
+#   # Single device:
+#   ansible-playbook -i 04_openwrt/inventory.ini \
+#     -l main_router playbooks/openwrt/sysupgrade.yaml
+
+# --- Play 1: Pre-upgrade config snapshot and sysupgrade.conf ---
+- name: "Sysupgrade — pre-upgrade snapshot"
+  hosts: all
+  gather_facts: false
+  roles:
+    - openwrt_config_retrieve
+    - openwrt_sysupgrade_preserve
+
+# --- Play 2: Manual upgrade pause ---
+- name: "Sysupgrade — wait for manual upgrade"
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Pause for sysupgrade
+      ansible.builtin.pause:
+        prompt: >-
+          Pre-upgrade snapshot complete.
+          Perform sysupgrade now
+          (LuCI -> System -> Attended Sysupgrade, or CLI: sysupgrade -v <image>).
+          Wait for the device to fully reboot, then press ENTER.
+
+# --- Play 3: Post-upgrade reprovision ---
+- name: "Sysupgrade — post-upgrade reprovision"
+  hosts: all
+  gather_facts: false
+  pre_tasks:
+    - name: Wait for device to become reachable
+      ansible.builtin.raw: echo "alive"
+      register: _alive
+      changed_when: false
+      until: _alive is success
+      retries: 30
+      delay: 10
+
+    - name: Update apk package index
+      ansible.builtin.raw: apk update
+      changed_when: true
+
+    - name: Reinstall python3 (lost during sysupgrade)
+      ansible.builtin.raw: apk add python3
+      register: _py3
+      changed_when: "'Installing' in _py3.stdout"
+
+  roles:
+    - openwrt_packages
+    - openwrt_raw_config
+    - openwrt_services
+    - openwrt_sysupgrade_preserve
+
+# --- Play 4: Post-upgrade verification snapshot ---
+- name: "Sysupgrade — post-upgrade verification snapshot"
+  hosts: all
+  gather_facts: false
+  roles:
+    - openwrt_config_retrieve

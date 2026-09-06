@@ -1,0 +1,11 @@
+---
+- name: Set CPU governor on Proxmox hosts
+  hosts: all
+  become: true
+  gather_facts: false
+  pre_tasks:
+    - name: Wait for SSH connection
+      ansible.builtin.wait_for_connection:
+        timeout: 300
+  roles:
+    - proxmox_cpu_governor

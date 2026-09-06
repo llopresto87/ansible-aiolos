@@ -1,0 +1,58 @@
+---
+- name: Check whether template VM already exists
+  ansible.builtin.command: "qm status {{ proxmox_vm_template_vmid }}"
+  register: proxmox_vm_template_status
+  failed_when: false
+  changed_when: false
+
+- name: Ensure cloud image cache directory exists
+  ansible.builtin.file:
+    path: "{{ proxmox_vm_template_cache_dir }}"
+    state: directory
+    mode: "0755"
+
+- name: Download cloud image (cached)
+  ansible.builtin.get_url:
+    url: "{{ proxmox_vm_template_image_url }}"
+    dest: "{{ proxmox_vm_template_cache_dir }}/{{ proxmox_vm_template_image_url | basename }}"
+    mode: "0644"
+
+- name: Create template VM shell with virtio+sata convention
+  ansible.builtin.command:
+    cmd: >-
+      qm create {{ proxmox_vm_template_vmid }}
+      --name {{ proxmox_vm_template_name }}
+      --memory {{ proxmox_vm_template_memory }}
+      --cores {{ proxmox_vm_template_cores }}
+      --net0 virtio,bridge={{ proxmox_vm_template_net_bridge }}
+      --ostype l26
+      --sata0 {{ proxmox_vm_template_storage }}:cloudinit,media=cdrom
+      --boot order=virtio0;sata0;net0
+      --serial0 socket
+      --vga serial0
+  when: proxmox_vm_template_status.rc != 0
+  changed_when: proxmox_vm_template_status.rc != 0
+
+- name: Import cloud image into template VM disk
+  ansible.builtin.command:
+    cmd: >-
+      qm disk import {{ proxmox_vm_template_vmid }}
+      {{ proxmox_vm_template_cache_dir }}/{{ proxmox_vm_template_image_url | basename }}
+      {{ proxmox_vm_template_storage }}
+  when: proxmox_vm_template_status.rc != 0
+  changed_when: proxmox_vm_template_status.rc != 0
+
+- name: Attach imported disk as virtio0
+  ansible.builtin.command:
+    cmd: >-
+      qm set {{ proxmox_vm_template_vmid }}
+      --virtio0 {{ proxmox_vm_template_storage }}:{{ proxmox_vm_template_vmid
+      }}/vm-{{ proxmox_vm_template_vmid }}-disk-0.raw
+  when: proxmox_vm_template_status.rc != 0
+  changed_when: proxmox_vm_template_status.rc != 0
+
+- name: Convert VM into template
+  ansible.builtin.command:
+    cmd: "qm template {{ proxmox_vm_template_vmid }}"
+  when: proxmox_vm_template_status.rc != 0
+  changed_when: proxmox_vm_template_status.rc != 0

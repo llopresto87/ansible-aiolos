@@ -1,0 +1,30 @@
+---
+# pihole_blocklist — scan group_vars for container IPs and auto-update
+# the Pi-hole servers[] list, then push DNS records.
+# Runs on localhost (connection: local).
+
+- name: Validate blocklist update inputs
+  ansible.builtin.assert:
+    that:
+      - pihole_blocklist_group_vars_path is defined
+      - pihole_blocklist_container_scan_paths is defined
+      - pihole_blocklist_container_scan_paths | length > 0
+    fail_msg: >-
+      pihole_blocklist_group_vars_path and pihole_blocklist_container_scan_paths[]
+      must be defined for pihole_blocklist
+
+- name: Find container definition files
+  ansible.builtin.find:
+    paths: "{{ pihole_blocklist_container_scan_paths }}"
+    patterns: "*.yml,*.yaml"
+  register: pihole_blocklist_container_files
+  delegate_to: localhost
+
+- name: Load current Pi-hole group vars
+  ansible.builtin.include_vars:
+    file: "{{ pihole_blocklist_group_vars_path }}"
+    name: pihole_blocklist_current_vars
+
+- name: Set current servers list
+  ansible.builtin.set_fact:
+    pihole_blocklist_servers: "{{ pihole_blocklist_current_vars.servers | default([]) }}"

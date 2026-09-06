@@ -1,0 +1,23 @@
+---
+# openwrt_sysupgrade_preserve — deploy /etc/sysupgrade.conf to ensure
+# critical configs and custom files survive firmware upgrades.
+#
+# OpenWrt already preserves most of /etc/ via /lib/upgrade/keep.d/,
+# but custom files and belt-and-suspenders entries for network
+# reachability belong in /etc/sysupgrade.conf.
+
+- name: Validate sysupgrade preserve contract
+  ansible.builtin.assert:
+    that:
+      - openwrt_sysupgrade_preserve is defined
+      - openwrt_sysupgrade_preserve | length > 0
+    fail_msg: >-
+      openwrt_sysupgrade_preserve list must be defined with paths to preserve
+
+- name: Deploy /etc/sysupgrade.conf
+  ansible.builtin.template:
+    src: sysupgrade.conf.j2
+    dest: /etc/sysupgrade.conf
+    owner: root
+    group: root
+    mode: "0644"

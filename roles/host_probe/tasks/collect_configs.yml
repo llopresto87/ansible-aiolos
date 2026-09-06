@@ -1,0 +1,44 @@
+# yamllint disable rule:line-length rule:truthy
+---
+# Collect configuration files (guarded full-scan). This step is only run
+# when `host_probe_mode == 'full-scan'` (controlled by the role's main tasks).
+
+- name: Find candidate config files under /etc and container config dirs
+  ansible.builtin.find:
+    paths:
+      - /etc
+      - /etc/docker
+      - /etc/containers
+    file_type: file
+    patterns:
+      - '*.conf'
+      - '*.json'
+      - '*.yaml'
+      - '*.yml'
+      - '*.service'
+      - '*.env'
+      - '*daemon*'
+      - '*key*'
+    recurse: true
+    depth: 3
+  register: host_probe_found
+  changed_when: false
+  ignore_errors: true
+
+- name: Limit number of candidate files to fetch
+  ansible.builtin.set_fact:
+    host_probe_found_files: "{{ host_probe_found.files | default([]) }}"
+
+- name: Fetch matched config files to controller (size + exclude guards)
+  ansible.builtin.fetch:
+    src: "{{ item.path }}"
+    dest: "{{ host_probe_output_root }}/{{ inventory_hostname }}/files/"
+    flat: false
+  loop: "{{ host_probe_found_files | default([]) }}"
+  when:
+    - "(item.size | int) <= host_probe_max_slurp_size_bytes"
+    - "not (item.path | regex_search('^(/proc|/sys|/dev|/run|/var/lib|/root/.ssh|/etc/ssl/private)'))"
+  become: "{{ host_probe_allow_become | default(false) | bool }}"
+  register: host_probe_fetch_results
+  changed_when: false
+  ignore_errors: true

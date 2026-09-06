@@ -1,0 +1,10 @@
+---
+# yamllint disable rule:line-length
+# Thin wrapper playbook to run the host_probe role and generate controller-side group_vars
+
+- name: Generate group_vars from host probe
+  hosts: all
+  gather_facts: false
+  become: "{{ host_probe_allow_become | default(false) }}"
+  roles:
+    - role: host_probe

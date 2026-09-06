@@ -1,0 +1,19 @@
+---
+- name: Bootstrap SSH keys onto targets (key-first, password-fallback)
+  hosts: all
+  gather_facts: false
+  roles:
+    - ssh_bootstrap
+
+- name: Configure bootstrapped hosts (install keys, harden)
+  hosts: bootstrapped
+  become: true
+  gather_facts: false
+  roles:
+    - role: ssh_authorized_keys
+      vars:
+        ssh_authorized_keys_ssh_key_name: "{{ bootstrap_key_name }}"
+    - role: ssh_hardening
+      vars:
+        ssh_hardening_disable_ssh_password: "{{ ssh_hardening_disable_ssh_password | default(false) }}"
+        ssh_hardening_ssh_key_name: "{{ bootstrap_key_name }}"

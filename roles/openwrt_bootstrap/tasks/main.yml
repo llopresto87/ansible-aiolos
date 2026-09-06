@@ -1,0 +1,76 @@
+---
+# openwrt_bootstrap — first-init after factory reset or fresh flash
+# Runs WITHOUT python via raw module. Installs python3, sets root
+# password, configures network to final IP, deploys SSH key, reboots.
+#
+# After this role completes the device is reachable at its final IP
+# with SSH key auth and python3 available for standard Ansible modules.
+
+- name: Validate bootstrap contract
+  ansible.builtin.raw: "true"
+  changed_when: false
+  failed_when: false
+
+- name: Assert bootstrap variables are defined
+  ansible.builtin.raw: >-
+    test -n "{{ openwrt_device.factory_ip | default('') }}" &&
+    test -n "{{ openwrt_device.ip_address | default('') }}" &&
+    test -n "{{ openwrt_device.netmask | default('') }}" &&
+    test -n "{{ openwrt_ssh.ssh_key_type | default('') }}"
+  changed_when: false
+
+- name: Update apk package index
+  ansible.builtin.raw: apk update
+  changed_when: true
+
+- name: Install python3 for Ansible module support
+  ansible.builtin.raw: apk add python3
+  register: openwrt_bootstrap_python
+  changed_when: "'Installing' in openwrt_bootstrap_python.stdout"
+
+- name: Set root password
+  ansible.builtin.raw: >-
+    echo 'root:{{ openwrt_device.root_password }}' | chpasswd
+  changed_when: true
+  no_log: true
+  when: openwrt_device.root_password is defined
+
+- name: Configure LAN IP address via UCI
+  ansible.builtin.raw: >-
+    uci set network.lan.ipaddr='{{ openwrt_device.ip_address }}' &&
+    uci set network.lan.netmask='{{ openwrt_device.netmask }}' &&
+    uci commit network
+  changed_when: true
+
+- name: Set system hostname via UCI
+  ansible.builtin.raw: >-
+    uci set system.@system[0].hostname='{{ openwrt_device.hostname }}' &&
+    uci commit system
+  changed_when: true
+  when: openwrt_device.hostname is defined
+
+- name: Ensure dropbear authorized_keys directory exists
+  ansible.builtin.raw: mkdir -p /etc/dropbear
+  changed_when: false
+
+- name: Deploy SSH public key for root
+  ansible.builtin.raw: >-
+    echo '{{ lookup("file",
+    "files/ssh_keys/"
+    + openwrt_ssh.ssh_key_type + ".pub") }}'
+    > /etc/dropbear/authorized_keys &&
+    chmod 0600 /etc/dropbear/authorized_keys
+  changed_when: true
+
+- name: Disable password authentication in dropbear
+  ansible.builtin.raw: >-
+    uci set dropbear.main.PasswordAuth='off' &&
+    uci set dropbear.main.RootPasswordAuth='off' &&
+    uci commit dropbear
+  changed_when: true
+  when: openwrt_ssh.disable_password_auth | default(false) | bool
+
+- name: Reboot to apply network changes
+  ansible.builtin.raw: reboot
+  changed_when: true
+  ignore_unreachable: true

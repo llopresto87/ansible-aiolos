@@ -1,0 +1,8 @@
+---
+- name: Stop LXC container
+  hosts: all
+  gather_facts: false
+  roles:
+    - role: proxmox_lxc_state
+      vars:
+        proxmox_lxc_state_proxmox_lxc_desired_state: stopped

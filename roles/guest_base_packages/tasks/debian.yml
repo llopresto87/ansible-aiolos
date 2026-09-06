@@ -1,0 +1,19 @@
+---
+- name: Update apt cache
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+    lock_timeout: 300
+  register: guest_base_packages_update_cache_result
+  retries: 5
+  delay: 20
+  until: guest_base_packages_update_cache_result is succeeded
+
+- name: Perform dist upgrade
+  ansible.builtin.apt:
+    upgrade: dist
+    lock_timeout: 300
+  register: guest_base_packages_dist_upgrade_result
+  retries: 5
+  delay: 20
+  until: guest_base_packages_dist_upgrade_result is succeeded

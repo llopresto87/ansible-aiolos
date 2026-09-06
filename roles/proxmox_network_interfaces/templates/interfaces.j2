@@ -1,0 +1,35 @@
+auto lo
+iface lo inet loopback
+
+{% for bridge in bridge_settings.bridges %}
+# Configure {{ bridge.name }}
+auto {{ bridge.name }}
+iface {{ bridge.name }} inet static
+    {% if bridge.ip is defined %}
+    address {{ bridge.ip }}
+    {% endif %}
+    {% if bridge.gateway is defined %}
+    gateway {{ bridge.gateway }}
+    {% endif %}
+    {% if bridge.mtu is defined %}
+    mtu {{ bridge.mtu }}
+    {% endif %}
+    ovs_type OVSBridge
+    {% if bridge.nics is defined %}
+    ovs_ports {{ bridge.nics | join(' ') }}
+    {% endif %}
+{% endfor %}
+
+{% for bridge in bridge_settings.bridges %}
+{% if bridge.nics is defined %}
+{% for nic in bridge.nics %}
+# Configure {{ nic }}
+auto {{ nic }}
+iface {{ nic }} inet manual
+    ovs_type OVSPort
+    ovs_bridge {{ bridge.name }}
+{% endfor %}
+{% endif %}
+{% endfor %}
+
+source /etc/network/interfaces.d/*

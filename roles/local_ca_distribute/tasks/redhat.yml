@@ -1,0 +1,17 @@
+---
+- name: Install CA certificates package (RedHat)
+  ansible.builtin.package:
+    name: ca-certificates
+    state: present
+
+- name: Copy local CA certificate (RedHat)
+  ansible.builtin.copy:
+    src: "{{ local_ca_distribute_source_cert_path }}"
+    dest: "{{ local_ca_distribute_redhat_cert_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Update RedHat trust store
+  when:
+    - not ansible_check_mode
+      or (local_ca_distribute_source_cert_stat.stat.exists | default(false))

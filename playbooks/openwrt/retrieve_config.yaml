@@ -1,0 +1,22 @@
+---
+# Standalone config retrieval from a running OpenWrt device.
+# Pulls all configs, package lists, service state, and UCI dump
+# into a timestamped backup directory. Also updates the "active"
+# config set used by openwrt_raw_config for reprovisioning.
+#
+# Backup location:
+#   roles/openwrt_raw_config/backups/<host>/<version>_<timestamp>/
+#
+# Usage:
+#   ansible-playbook -i 04_openwrt/inventory.ini \
+#     playbooks/openwrt/retrieve_config.yaml
+#
+#   # Single device:
+#   ansible-playbook -i 04_openwrt/inventory.ini \
+#     -l main_router playbooks/openwrt/retrieve_config.yaml
+
+- name: Retrieve OpenWrt device configuration
+  hosts: all
+  gather_facts: false
+  roles:
+    - openwrt_config_retrieve

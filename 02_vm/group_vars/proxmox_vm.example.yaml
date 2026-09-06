@@ -1,0 +1,34 @@
+# Example VM definitions for group_vars-driven provisioning
+# Copy into an inventory/group_vars (e.g. 02_vm/group_vars/<group>.yaml)
+# Adjust values; store secrets with ansible-vault.
+
+---
+
+proxmox_vms:
+  - node: pve0
+    vmid: 110
+    name: test-vm-01
+    memory: 2048
+    cores: 2
+    sockets: 1
+    scsi0: local-lvm:32
+    net0: virtio,bridge=vmbr0
+    ostype: l26
+    ciuser: ansible
+    cipassword: changeme
+    ssh_public_key_path: files/ssh_keys/standard.pub
+    # The VM IPv4 address (use static assignment or ensure DHCP reservation)
+    ip_address: 192.0.2.10
+    # Path to a private key on the controller for SSH into the VM
+    # (can be vault-encrypted file in files/ssh_keys/)
+    ssh_private_key_path: files/ssh_keys/standard
+    cloud_init_user_data:
+      enabled: true
+      packages:
+        - git
+        - curl
+      runcmd:
+        - echo "Provisioned by Ansible"
+    post_provision:
+      install_base_packages: true
+      install_docker: false

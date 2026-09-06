@@ -1,0 +1,18 @@
+---
+- name: Remove uploaded cloud-init ISO from Proxmox storage when requested
+  ansible.builtin.stat:
+    path: "{{ proxmox_vm_provision_cloudinit_storage_path }}/{{ proxmox_vm_provision_cloudinit_iso_name }}"
+  register: proxmox_vm_provision_remote_iso_stat
+  become: true
+
+- name: Delete uploaded ISO from Proxmox storage
+  ansible.builtin.file:
+    path: "{{ proxmox_vm_provision_cloudinit_storage_path }}/{{ proxmox_vm_provision_cloudinit_iso_name }}"
+    state: absent
+  when:
+    - proxmox_vm_provision_remote_iso_stat.stat.exists
+    - (proxmox_vm_provision_proxmox_vm.cloud_init_user_data.advanced.cleanup_remote_iso
+      | default(proxmox_vm_provision_proxmox_vm_cloud_init_cleanup_remote)) | bool
+  become: true
+  # Note: removing the ISO may prevent booting from the CD later.
+  # Set cleanup_remote_iso to false to keep ISO on storage.

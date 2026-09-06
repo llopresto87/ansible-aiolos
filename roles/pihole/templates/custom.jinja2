@@ -1,0 +1,8 @@
+{%- set ns = namespace(lines=[]) -%}
+{%- for server in servers -%}
+{%- set _ = ns.lines.append(
+	server.ip ~ ' ' ~ server.hostname ~
+	((' ' ~ server.alias) if server.alias is defined else '')
+) -%}
+{%- endfor -%}
+{{ (ns.lines | join('\n')) ~ '\n' }}

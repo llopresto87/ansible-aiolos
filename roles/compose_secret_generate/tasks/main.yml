@@ -1,0 +1,34 @@
+---
+# Auto-generate compose secrets declared in compose_secret_vars.
+# Each secret is stored as a file under tmp/<inventory_hostname>/<var_name>
+# and set as an Ansible fact (lowercase) so templates/compose can reference it.
+# Secrets are generated only if not already present (idempotent).
+
+- name: Ensure local secret storage directory exists
+  ansible.builtin.file:
+    path: "{{ compose_secret_generate_storage_dir }}/{{ inventory_hostname }}"
+    state: directory
+    mode: "0700"
+  delegate_to: localhost
+  become: false
+  run_once: false
+  when:
+    - use_compose | default(false) | bool
+    - compose_secret_vars is defined
+    - compose_secret_vars | length > 0
+
+- name: Generate missing compose secrets
+  ansible.builtin.set_fact:
+    "{{ item | lower }}": >-
+      {{ lookup('ansible.builtin.password',
+         compose_secret_generate_storage_dir ~ '/' ~ inventory_hostname ~ '/' ~ item,
+         chars=['ascii_letters', 'digits'],
+         length=40) }}
+  loop: "{{ compose_secret_vars | default([]) }}"
+  no_log: true
+  when:
+    - use_compose | default(false) | bool
+    - lookup('ansible.builtin.env', item) | length == 0
+    - vars[item | lower] is not defined
+  delegate_to: localhost
+  become: false

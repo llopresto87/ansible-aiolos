@@ -1,0 +1,6 @@
+---
+ansible_connection: ssh
+ansible_user: root
+ansible_shell_type: sh
+# Use python3 if available, otherwise disable Python and use raw/shell modules
+ansible_python_interpreter: /usr/bin/python3

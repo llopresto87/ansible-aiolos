@@ -1,0 +1,9 @@
+---
+- name: Resolve OS family
+  ansible.builtin.set_fact:
+    guest_base_packages_resolved_os_family: >-
+      {{ ansible_os_family
+         | default(os | default('Debian') | capitalize) }}
+
+- name: Include OS-specific package tasks
+  ansible.builtin.include_tasks: "{{ guest_base_packages_resolved_os_family | lower }}.yml"

@@ -1,0 +1,32 @@
+---
+ansible_user: root
+os: ubuntu
+main_user: pibuco
+ssh_user_keygen_ssh_user_key: standard
+ssh_key_type: infrastructure
+servers:
+  - ip: 192.0.2.11
+    hostname: pi.alert
+
+  - ip: 192.0.2.158
+    hostname: pve1.example.lan
+
+  - ip: 192.0.2.155
+    hostname: pve2.example.lan
+
+  - ip: 192.0.2.156
+    hostname: pve3.example.lan
+
+  - ip: 192.0.2.157
+    hostname: pve4.example.lan
+
+  - ip: 192.0.2.159
+    hostname: pve6.example.lan
+
+  - ip: 192.0.2.13
+    hostname: postgresql.example.lan
+
+  - ip: 192.0.2.140
+    hostname: pve0.example.lan
+  - ip: 192.0.2.15
+    hostname: jcproxy.example.lan

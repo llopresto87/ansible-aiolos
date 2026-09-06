@@ -1,0 +1,9 @@
+---
+proxmox_lxc_provision_proxmox_api_user: root@pam
+proxmox_lxc_provision_proxmox_api_host: "{{ inventory_hostname }}"
+proxmox_lxc_provision_proxmox_lxc_template_prefix: iso_backup:vztmpl
+proxmox_lxc_provision_proxmox_lxc_start_after_create: true
+proxmox_lxc_provision_no_log: true
+proxmox_lxc_provision_default_features:
+  - "nesting=1"
+  - "keyctl=1"

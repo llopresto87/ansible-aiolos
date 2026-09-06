@@ -1,0 +1,89 @@
+---
+# ssh_bootstrap/tasks/main.yml
+# Bootstrap SSH key authentication onto a target host.
+# Probes key-based access first; falls back to sshpass+password if needed.
+
+- name: Set target connection vars
+  ansible.builtin.set_fact:
+    target_host: "{{ ansible_host | default(inventory_hostname) }}"
+    target_user: "{{ ansible_user | default('root') }}"
+    target_password: "{{ ansible_password | default(bootstrap_password | default('')) }}"
+
+- name: Read candidate public key
+  ansible.builtin.set_fact:
+    ssh_bootstrap_pubkey_content: >-
+      {{ lookup('file', ssh_bootstrap_key_dir + '/' + ssh_bootstrap_key_name + '.pub') }}
+  failed_when: false
+  changed_when: false
+
+- name: Encode public key for transport
+  ansible.builtin.set_fact:
+    pubkey_b64: "{{ ssh_bootstrap_pubkey_content | b64encode }}"
+  changed_when: false
+
+- name: Determine candidate private key
+  ansible.builtin.set_fact:
+    candidate_priv: >-
+      {{ ansible_ssh_private_key_file
+         | default(ssh_bootstrap_key_dir + '/' + ssh_bootstrap_key_name) }}
+  changed_when: false
+
+- name: Compute SSH target
+  ansible.builtin.set_fact:
+    ssh_target: "{{ target_user }}@{{ target_host }}"
+  changed_when: false
+
+- name: Test key-based SSH access
+  ansible.builtin.shell: |
+    ssh -o BatchMode=yes \
+      -o ConnectTimeout={{ ssh_bootstrap_connect_timeout }} \
+      -o StrictHostKeyChecking={{ 'no' if not ssh_bootstrap_strict_host_checking else 'yes' }} \
+      -i "{{ candidate_priv }}" {{ ssh_target }} 'echo ok'
+  register: key_test
+  failed_when: false
+  changed_when: false
+
+- name: Check for sshpass on control node
+  ansible.builtin.command: command -v sshpass
+  register: sshpass_check
+  failed_when: false
+  changed_when: false
+
+- name: Push public key using sshpass (password fallback)
+  ansible.builtin.shell: |
+    set -o pipefail
+    sshpass -p "{{ target_password }}" ssh \
+      -o StrictHostKeyChecking={{ 'no' if not ssh_bootstrap_strict_host_checking else 'yes' }} \
+      {{ ssh_target }} \
+      'mkdir -p ~/.ssh && printf "%s" "{{ pubkey_b64 }}" | base64 -d >> ~/.ssh/authorized_keys && \
+      chmod 700 ~/.ssh && chmod 600 ~/.ssh/authorized_keys'
+  register: push_result
+  changed_when: false
+  failed_when: push_result.rc != 0
+  when:
+    - key_test.rc != 0
+    - target_password != ''
+    - sshpass_check.rc == 0
+
+- name: Fail if no authentication method succeeded
+  ansible.builtin.fail:
+    msg: >-
+      Unable to authenticate to {{ target_host }} via SSH key ({{ candidate_priv }})
+      or password (check `ansible_password`/`bootstrap_password`). Install
+      `sshpass` on control node to allow password-based bootstrap.
+  when:
+    - key_test.rc != 0
+    - (target_password == '' or sshpass_check.rc != 0)
+
+- name: Add host to bootstrapped group (key-based or after push)
+  ansible.builtin.add_host:
+    name: "{{ inventory_hostname }}"
+    groups: bootstrapped
+    ansible_host: "{{ target_host }}"
+    ansible_user: "{{ target_user }}"
+    ansible_ssh_private_key_file: "{{ candidate_priv }}"
+  when: key_test.rc == 0 or (push_result is defined and push_result.rc == 0)
+
+- name: Expose bootstrap_key_name for downstream plays
+  ansible.builtin.set_fact:
+    bootstrap_key_name: "{{ ssh_bootstrap_key_name }}"

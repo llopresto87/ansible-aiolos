@@ -1,0 +1,26 @@
+---
+- name: Deploy cpu governor systemd unit
+  ansible.builtin.template:
+    src: cpu_governor.service.j2
+    dest: /etc/systemd/system/cpu_governor.service
+    owner: root
+    group: root
+    mode: "0644"
+  register: proxmox_cpu_governor_unit
+  when: proxmox_cpu_governor_governor is defined
+
+- name: Enable and start cpu governor service
+  ansible.builtin.systemd:
+    name: cpu_governor
+    daemon_reload: true
+    enabled: true
+    state: started
+  when: proxmox_cpu_governor_governor is defined
+
+- name: Restart cpu governor service when unit changed
+  ansible.builtin.systemd:
+    name: cpu_governor
+    state: restarted
+  when:
+    - governor is defined
+    - proxmox_cpu_governor_unit is changed

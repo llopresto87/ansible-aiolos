@@ -1,0 +1,11 @@
+---
+nginx_proxy_configure_manage_routes: false
+nginx_proxy_configure_compose_directory: nginx_proxy
+nginx_proxy_configure_config_directory: nginx/conf.d
+nginx_proxy_configure_config_filename: proxy-auto.conf
+
+nginx_proxy_configure_tls_cert_path: /etc/nginx/certs/local-proxy.crt
+nginx_proxy_configure_tls_key_path: /etc/nginx/certs/local-proxy.key
+
+nginx_proxy_configure_default_upstream_scheme: http
+nginx_proxy_configure_default_upstream_port: 80

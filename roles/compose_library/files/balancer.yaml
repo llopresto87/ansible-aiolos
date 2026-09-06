@@ -1,0 +1,11 @@
+---
+services:
+  app:
+    image: 'nginx:latest'
+    restart: unless-stopped
+    ports:
+      # These ports are in format <host-port>:<container-port>
+      - '80:80' # Public HTTP Port
+      - '443:443' # Public HTTPS Port
+    volumes:
+      - ./nginx:/etc/nginx

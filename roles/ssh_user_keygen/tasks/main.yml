@@ -1,0 +1,166 @@
+---
+# Generate an SSH keypair on the control node for a user and install the
+# public key into the target user's authorized_keys. The generated keys are
+# stored under files/ssh_keys/<keyname> and <keyname>.pub so they
+# can be reused by other playbooks.
+
+- name: Ensure `main_user` is defined
+  ansible.builtin.assert:
+    that:
+      - main_user is defined
+    fail_msg: "main_user must be defined to create per-user SSH keys"
+
+- name: Compute generated key name (if not provided)
+  ansible.builtin.set_fact:
+    ssh_user_keygen_ssh_user_key: >-
+      {{ ssh_user_keygen_ssh_user_key
+         | default('user_' ~ main_user ~ '_'
+                   ~ (inventory_hostname | replace('.', '_'))) }}
+
+- name: Compute control-node key paths
+  ansible.builtin.set_fact:
+    ssh_user_keygen_key_store_dir: "{{ ssh_key_store_dir | default(playbook_dir + '/../files/ssh_keys') }}"
+  changed_when: false
+
+- name: Compute control-node key file paths
+  ansible.builtin.set_fact:
+    ssh_user_keygen_private_key_path: "{{ ssh_user_keygen_key_store_dir }}/{{ ssh_user_keygen_ssh_user_key }}"
+    ssh_user_keygen_public_key_path: "{{ ssh_user_keygen_key_store_dir }}/{{ ssh_user_keygen_ssh_user_key }}.pub"
+  changed_when: false
+
+- name: Ensure key store directory exists on control node
+  ansible.builtin.file:
+    path: "{{ ssh_user_keygen_key_store_dir }}"
+    state: directory
+    mode: '0755'
+  delegate_to: localhost
+  become: false
+
+- name: Check for existing public key on control node
+  ansible.builtin.stat:
+    path: "{{ ssh_user_keygen_public_key_path }}"
+  register: ssh_user_keygen_pubkey_stat
+  delegate_to: localhost
+  become: false
+  changed_when: false
+
+- name: Check for existing private key on control node
+  ansible.builtin.stat:
+    path: "{{ ssh_user_keygen_private_key_path }}"
+  register: ssh_user_keygen_privkey_stat
+  delegate_to: localhost
+  become: false
+  changed_when: false
+
+- name: Generate SSH keypair on control node when missing
+  ansible.builtin.command:
+    argv:
+      - ssh-keygen
+      - -t
+      - ed25519
+      - -f
+      - "{{ ssh_user_keygen_private_key_path }}"
+      - -N
+      - ""
+      - -C
+      - "auto {{ ssh_user_keygen_ssh_user_key }}"
+  register: ssh_user_keygen_keygen_result
+  delegate_to: localhost
+  become: false
+  changed_when: ssh_user_keygen_keygen_result.rc == 0
+  when: not ssh_user_keygen_pubkey_stat.stat.exists or not ssh_user_keygen_privkey_stat.stat.exists
+
+- name: Ensure private key permissions on control node
+  ansible.builtin.file:
+    path: "{{ ssh_user_keygen_private_key_path }}"
+    mode: '0600'
+  delegate_to: localhost
+  become: false
+  when: >-
+    ssh_user_keygen_privkey_stat.stat.exists or
+    (ssh_user_keygen_keygen_result is defined and
+     (ssh_user_keygen_keygen_result.changed | default(false)))
+
+- name: Determine vault password file location
+  ansible.builtin.set_fact:
+    ssh_user_keygen_vault_pw_file: >-
+      {{ vault_password_file
+         | default(lookup('env', 'ANSIBLE_VAULT_PASSWORD_FILE')
+                   | default('./ansible_password')) }}
+  changed_when: false
+
+- name: Stat vault password file on control node
+  ansible.builtin.stat:
+    path: "{{ ssh_user_keygen_vault_pw_file }}"
+  register: ssh_user_keygen_vault_pw_stat
+  delegate_to: localhost
+  become: false
+  changed_when: false
+
+- name: Read first line of private key (detect encryption)
+  ansible.builtin.command:
+    argv:
+      - head
+      - -n
+      - '1'
+      - "{{ ssh_user_keygen_private_key_path }}"
+  register: ssh_user_keygen_private_first_line
+  delegate_to: localhost
+  become: false
+  failed_when: false
+  changed_when: false
+  when: >-
+    ssh_user_keygen_privkey_stat.stat.exists or
+    (ssh_user_keygen_keygen_result is defined and
+     (ssh_user_keygen_keygen_result.changed | default(false)))
+
+- name: Set ssh_user_keygen_key_encrypted fact
+  ansible.builtin.set_fact:
+    ssh_user_keygen_key_encrypted: >-
+      {{ (ssh_user_keygen_private_first_line.stdout is defined) and
+         ssh_user_keygen_private_first_line.stdout.startswith('$ANSIBLE_VAULT') }}
+  changed_when: false
+
+- name: Encrypt private key with ansible-vault (control node)
+  ansible.builtin.command:
+    argv:
+      - ansible-vault
+      - encrypt
+      - --encrypt-vault-id
+      - "{{ ssh_user_keygen_encrypt_vault_id | default('default') }}"
+      - --vault-password-file
+      - "{{ ssh_user_keygen_vault_pw_file }}"
+      - "{{ ssh_user_keygen_private_key_path }}"
+  register: ssh_user_keygen_vault_encrypt_result
+  delegate_to: localhost
+  become: false
+  failed_when: ssh_user_keygen_vault_encrypt_result.rc != 0
+  changed_when: ssh_user_keygen_vault_encrypt_result.rc == 0
+  when:
+    - ssh_user_keygen_vault_pw_stat.stat.exists
+    - not ssh_user_keygen_key_encrypted
+    - >-
+      ssh_user_keygen_privkey_stat.stat.exists or
+      (ssh_user_keygen_keygen_result is defined and
+       (ssh_user_keygen_keygen_result.changed | default(false)))
+
+- name: Warn if vault password file missing and private key remains unencrypted
+  ansible.builtin.debug:
+    msg: >-
+      Private key {{ ssh_user_keygen_private_key_path }} is unencrypted. To enable automatic encryption
+      of generated private keys set `vault_password_file` or ensure
+      `ANSIBLE_VAULT_PASSWORD_FILE` is available on the control node.
+  when:
+    - not ssh_user_keygen_vault_pw_stat.stat.exists
+    - not ssh_user_keygen_key_encrypted
+
+- name: Install generated public key into user's authorized_keys
+  ansible.posix.authorized_key:
+    user: "{{ main_user }}"
+    key: "{{ lookup('file', ssh_user_keygen_public_key_path) }}"
+    state: present
+    manage_dir: true
+  when: >-
+    ssh_user_keygen_pubkey_stat.stat.exists or
+    (ssh_user_keygen_keygen_result is defined and
+     (ssh_user_keygen_keygen_result.changed | default(false)))

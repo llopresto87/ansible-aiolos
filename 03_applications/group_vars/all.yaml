@@ -1,0 +1,13 @@
+---
+# Optional bootstrap variables (used by playbooks/ssh_key_handling/initialize_ssh.yaml):
+# bootstrap_key_name: name of key under files/ssh_keys/ (default: cluster)
+# bootstrap_password: vaulted password for initial bootstrap fallback (optional)
+# If both key and password are present, the bootstrap play tries key first.
+
+ansible_connection: ssh
+ansible_user: root
+ansible_ssh_private_key_file: "files/ssh_keys/test"
+
+# Optional: control-node key storage and vault settings. Example:
+# ssh_key_store_dir: /var/lib/ansible/ssh_keys
+# vault_password_file: ./ansible_password

@@ -1,0 +1,5 @@
+---
+proxmox_i915_power_enabled: false
+proxmox_i915_power_proxmox_i915_pci_device: "0000:00:02.0"
+proxmox_i915_power_control: "auto"
+proxmox_i915_power_proxmox_i915_service_name: set_pci_power_control

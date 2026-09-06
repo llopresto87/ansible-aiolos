@@ -1,0 +1,9 @@
+---
+# ansible-lint configuration
+# Warn on these but don't fail the gate:
+warn_list:
+  # Dynamic set_fact with jinja2 var names is an intentional pattern
+  # used for composing secrets from loops
+  - var-naming[no-jinja]
+  # run_once with delegate_to: localhost is standard for control-node tasks
+  - run-once[task]

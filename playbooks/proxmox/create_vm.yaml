@@ -1,0 +1,6 @@
+---
+- name: Create or update Proxmox VM instances
+  hosts: all
+  become: true
+  roles:
+    - proxmox_vm_provision

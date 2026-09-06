@@ -1,0 +1,223 @@
+---
+# openwrt_config_retrieve — pull device configs and metadata into a
+# timestamped, version-tagged local backup.  Also refreshes the
+# "active" config set that openwrt_raw_config uses for reprovisioning.
+#
+# Backup layout:
+#   backups/<host>/<version>_<timestamp>/          — snapshot
+#   backups/<host>/<version>_<timestamp>/_meta/     — packages, services, etc.
+#   backups/<host>/<version>_<timestamp>/etc_config/ — full /etc/config/ dump
+#   backups/<host>/latest                          — symlink → newest snapshot
+#   files/<host>/                                  — active configs (overwritten)
+
+- name: Validate retrieval contract
+  ansible.builtin.assert:
+    that:
+      - openwrt_raw_configs is defined
+      - openwrt_raw_configs | length > 0
+    fail_msg: openwrt_raw_configs must be defined for config retrieval
+
+# ---------- device metadata ----------
+
+- name: Get OpenWrt version string
+  ansible.builtin.shell: . /etc/openwrt_release && echo "$DISTRIB_RELEASE"
+  register: openwrt_config_retrieve__owrt_ver
+  changed_when: false
+
+- name: Get full /etc/openwrt_release
+  ansible.builtin.command: cat /etc/openwrt_release
+  register: openwrt_config_retrieve__owrt_release
+  changed_when: false
+
+- name: Set retrieval facts
+  ansible.builtin.set_fact:
+    openwrt_config_retrieve__ver: "{{ openwrt_config_retrieve__owrt_ver.stdout | trim }}"
+    openwrt_config_retrieve__ts: "{{ lookup('pipe', 'date -u +%Y%m%dT%H%M%SZ') }}"
+    openwrt_config_retrieve__host: "{{ inventory_hostname }}"
+    openwrt_config_retrieve__backup_root: "{{ inventory_dir }}/../roles/openwrt_raw_config/backups"
+    openwrt_config_retrieve__active_root: "{{ inventory_dir }}/../roles/openwrt_raw_config/files"
+
+- name: Set computed paths
+  ansible.builtin.set_fact:
+    openwrt_config_retrieve__backup_dir: >-
+      {{ openwrt_config_retrieve__backup_root
+      ~ '/' ~ openwrt_config_retrieve__host
+      ~ '/' ~ openwrt_config_retrieve__ver
+      ~ '_' ~ openwrt_config_retrieve__ts }}
+    openwrt_config_retrieve__latest_link: >-
+      {{ openwrt_config_retrieve__backup_root
+      ~ '/' ~ openwrt_config_retrieve__host
+      ~ '/latest' }}
+    openwrt_config_retrieve__active_dir: >-
+      {{ openwrt_config_retrieve__active_root
+      ~ '/' ~ openwrt_config_retrieve__host }}
+
+# ---------- create local directories ----------
+
+- name: Create backup directory tree
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  delegate_to: localhost
+  loop:
+    - "{{ openwrt_config_retrieve__backup_dir }}"
+    - "{{ openwrt_config_retrieve__backup_dir }}/_meta"
+    - "{{ openwrt_config_retrieve__backup_dir }}/etc_config"
+    - "{{ openwrt_config_retrieve__active_dir }}"
+
+# ---------- metadata snapshots ----------
+
+- name: Save device info
+  ansible.builtin.copy:
+    content: "{{ openwrt_config_retrieve__owrt_release.stdout }}\n"
+    dest: "{{ openwrt_config_retrieve__backup_dir }}/_meta/device_info.txt"
+    mode: "0644"
+  delegate_to: localhost
+
+- name: Get installed packages
+  ansible.builtin.shell: apk list --installed 2>/dev/null || opkg list-installed 2>/dev/null || true
+  register: openwrt_config_retrieve__pkgs
+  changed_when: false
+
+- name: Save package list
+  ansible.builtin.copy:
+    content: "{{ openwrt_config_retrieve__pkgs.stdout }}\n"
+    dest: "{{ openwrt_config_retrieve__backup_dir }}/_meta/packages.txt"
+    mode: "0644"
+  delegate_to: localhost
+
+- name: Get apk world file (explicitly installed packages)
+  ansible.builtin.shell: cat /etc/apk/world 2>/dev/null || true
+  register: openwrt_config_retrieve__world
+  changed_when: false
+
+- name: Save world file
+  ansible.builtin.copy:
+    content: "{{ openwrt_config_retrieve__world.stdout }}\n"
+    dest: "{{ openwrt_config_retrieve__backup_dir }}/_meta/world.txt"
+    mode: "0644"
+  delegate_to: localhost
+
+- name: Get enabled services (rc.d symlinks)
+  ansible.builtin.shell: set -o pipefail && ls -1 /etc/rc.d/ 2>/dev/null | sort || true
+  register: openwrt_config_retrieve__svcs
+  changed_when: false
+
+- name: Save services list
+  ansible.builtin.copy:
+    content: "{{ openwrt_config_retrieve__svcs.stdout }}\n"
+    dest: "{{ openwrt_config_retrieve__backup_dir }}/_meta/services.txt"
+    mode: "0644"
+  delegate_to: localhost
+
+- name: Get repository configuration
+  ansible.builtin.shell: >-
+    cat /etc/apk/repositories.d/* 2>/dev/null ||
+    cat /etc/apk/repositories 2>/dev/null || true
+  register: openwrt_config_retrieve__repos
+  changed_when: false
+
+- name: Save repository config
+  ansible.builtin.copy:
+    content: "{{ openwrt_config_retrieve__repos.stdout }}\n"
+    dest: "{{ openwrt_config_retrieve__backup_dir }}/_meta/repositories.txt"
+    mode: "0644"
+  delegate_to: localhost
+
+- name: Fetch sysupgrade.conf if present
+  ansible.builtin.fetch:
+    src: /etc/sysupgrade.conf
+    dest: "{{ openwrt_config_retrieve__backup_dir }}/_meta/sysupgrade.conf"
+    flat: true
+  failed_when: false
+
+- name: Fetch dropbear authorized_keys
+  ansible.builtin.fetch:
+    src: /etc/dropbear/authorized_keys
+    dest: "{{ openwrt_config_retrieve__backup_dir }}/_meta/dropbear_authorized_keys"
+    flat: true
+  failed_when: false
+
+# ---------- fetch known config files ----------
+
+- name: Fetch known configs (openwrt_raw_configs list)
+  ansible.builtin.fetch:
+    src: "{{ item.dest }}"
+    dest: "{{ openwrt_config_retrieve__backup_dir }}/{{ item.src | basename }}"
+    flat: true
+  loop: "{{ openwrt_raw_configs }}"
+  loop_control:
+    label: "{{ item.dest }}"
+  failed_when: false
+
+# ---------- full /etc/config/ discovery ----------
+
+- name: List all UCI config files on device
+  ansible.builtin.command: ls -1 /etc/config/
+  register: openwrt_config_retrieve__all_uci
+  changed_when: false
+
+- name: Fetch all UCI configs (full discovery)
+  ansible.builtin.fetch:
+    src: "/etc/config/{{ item }}"
+    dest: "{{ openwrt_config_retrieve__backup_dir }}/etc_config/{{ item }}"
+    flat: true
+  loop: "{{ openwrt_config_retrieve__all_uci.stdout_lines }}"
+  loop_control:
+    label: "/etc/config/{{ item }}"
+
+- name: Identify unknown UCI configs not in openwrt_raw_configs
+  ansible.builtin.set_fact:
+    openwrt_config_retrieve__known_uci: >-
+      {{ openwrt_raw_configs
+         | selectattr('dest', 'match', '^/etc/config/')
+         | map(attribute='dest')
+         | map('basename')
+         | list }}
+
+- name: Report unknown UCI config files
+  ansible.builtin.debug:
+    msg: >-
+      UCI configs on device NOT in openwrt_raw_configs:
+      {{ openwrt_config_retrieve__all_uci.stdout_lines | difference(openwrt_config_retrieve__known_uci) | join(', ') }}
+  when: (openwrt_config_retrieve__all_uci.stdout_lines | difference(openwrt_config_retrieve__known_uci)) | length > 0
+
+# ---------- update active config set ----------
+
+- name: Check which known configs were successfully fetched
+  ansible.builtin.stat:
+    path: "{{ openwrt_config_retrieve__backup_dir }}/{{ item.src | basename }}"
+  delegate_to: localhost
+  loop: "{{ openwrt_raw_configs }}"
+  loop_control:
+    label: "{{ item.src | basename }}"
+  register: openwrt_config_retrieve__fetched_stats
+
+- name: Update active configs from backup
+  ansible.builtin.copy:
+    src: "{{ item.stat.path }}"
+    dest: "{{ openwrt_config_retrieve__active_dir }}/{{ item.item.src | basename }}"
+    mode: "{{ item.item.mode | default('0644') }}"
+  delegate_to: localhost
+  loop: "{{ openwrt_config_retrieve__fetched_stats.results }}"
+  loop_control:
+    label: "{{ item.item.src | basename }}"
+  when: item.stat.exists
+
+# ---------- latest symlink ----------
+
+- name: Update latest symlink
+  ansible.builtin.file:
+    src: "{{ openwrt_config_retrieve__ver }}_{{ openwrt_config_retrieve__ts }}"
+    dest: "{{ openwrt_config_retrieve__latest_link }}"
+    state: link
+    force: true
+  delegate_to: localhost
+
+- name: Report backup location
+  ansible.builtin.debug:
+    msg: >-
+      Backup complete — version={{ openwrt_config_retrieve__ver }} timestamp={{ openwrt_config_retrieve__ts }}
+      backup_dir={{ openwrt_config_retrieve__backup_dir }}
+      active_dir={{ openwrt_config_retrieve__active_dir }}

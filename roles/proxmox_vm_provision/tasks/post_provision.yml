@@ -1,0 +1,42 @@
+---
+# post_provision.yml — wait for SSH and add VM to dynamic inventory
+# Included from main.yml when proxmox_vm_provision_wait_for_ssh is true
+
+- name: Build host variables for dynamic inventory
+  ansible.builtin.set_fact:
+    proxmox_vm_provision_host_name: "{{ proxmox_vm_provision_proxmox_vm.name }}"
+    proxmox_vm_provision_host_ip: "{{ proxmox_vm_provision_proxmox_vm.ip_address }}"
+    proxmox_vm_provision_host_user: "{{ proxmox_vm_provision_proxmox_vm.ciuser | default('ansible') }}"
+    proxmox_vm_provision_host_key: "{{ proxmox_vm_provision_proxmox_vm.ssh_private_key_path | default(omit) }}"
+
+- name: Wait for SSH on the new VM
+  ansible.builtin.wait_for:
+    host: "{{ proxmox_vm_provision_host_ip }}"
+    port: 22
+    delay: "{{ proxmox_vm_provision_ssh_delay }}"
+    timeout: "{{ proxmox_vm_provision_ssh_timeout }}"
+  delegate_to: localhost
+  when: proxmox_vm_provision_host_ip is defined
+
+- name: Add provisioned VM to in-memory inventory (with key)
+  ansible.builtin.add_host:
+    name: "{{ proxmox_vm_provision_host_name }}"
+    groups: "{{ proxmox_vm_provision_dynamic_group }}"
+    ansible_host: "{{ proxmox_vm_provision_host_ip }}"
+    ansible_user: "{{ proxmox_vm_provision_host_user }}"
+    ansible_ssh_private_key_file: "{{ proxmox_vm_provision_host_key }}"
+  delegate_to: localhost
+  when:
+    - proxmox_vm_provision_host_ip is defined
+    - proxmox_vm_provision_proxmox_vm.ssh_private_key_path is defined
+
+- name: Add provisioned VM to in-memory inventory (without key)
+  ansible.builtin.add_host:
+    name: "{{ proxmox_vm_provision_host_name }}"
+    groups: "{{ proxmox_vm_provision_dynamic_group }}"
+    ansible_host: "{{ proxmox_vm_provision_host_ip }}"
+    ansible_user: "{{ proxmox_vm_provision_host_user }}"
+  delegate_to: localhost
+  when:
+    - proxmox_vm_provision_host_ip is defined
+    - proxmox_vm_provision_proxmox_vm.ssh_private_key_path is not defined

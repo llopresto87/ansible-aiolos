@@ -1,0 +1,24 @@
+---
+# Example LXC container contract - customize for your environment
+proxmox_container:
+  vmid: 207
+  container_name: example-lxc
+  template_storage: iso_backup
+  template_name: ubuntu-24.04-standard_24.04-2_amd64.tar.zst
+  network_bridge: vmbr0
+  storage_pool: local-btrfs
+  memory: 4096
+  cores: 4
+  disk: 128
+  swap: 512
+  ssh_public_key_path: files/ssh_keys/cluster.pub
+  ip_address: 192.0.2.23/24
+  gateway: 192.0.2.1
+  # Encrypt password with: ansible-vault encrypt_string 'yourpassword'
+  password: !vault |
+    # Run: ansible-vault encrypt_string 'your_lxc_root_password'
+    $ANSIBLE_VAULT;1.1;AES256
+    00000000000000000000000000000000000000000000000000000000000000000000000000000000
+    0000000000000000000000000000000000000000000000000000000000000000000000000000000000
+  dns: 192.0.2.10
+  autostart_lxc: true

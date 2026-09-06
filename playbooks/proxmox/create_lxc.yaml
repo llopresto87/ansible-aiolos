@@ -1,0 +1,6 @@
+---
+- name: Create or update Proxmox LXC containers
+  hosts: all
+  become: true
+  roles:
+    - proxmox_lxc_provision

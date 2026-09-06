@@ -1,0 +1,7 @@
+---
+- name: Update custom config files from group_vars
+  hosts: all
+  become: true
+  roles:
+    - config_files
+    - systemd_manager

@@ -1,0 +1,10 @@
+---
+- name: Add Docker official repository (RedHat)
+  ansible.builtin.command:
+    cmd: dnf config-manager --add-repo {{ guest_docker_engine_guest_docker_repo_redhat }}
+    creates: /etc/yum.repos.d/docker-ce.repo
+
+- name: Install docker engine packages (RedHat)
+  ansible.builtin.dnf:
+    name: "{{ guest_docker_engine_guest_docker_packages_redhat }}"
+    state: present

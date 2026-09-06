@@ -1,0 +1,40 @@
+---
+# Gather a limited set of facts and run safe, non-destructive probes
+
+- name: Gather minimal facts (network, hardware, virtual)
+  ansible.builtin.setup:
+    gather_subset:
+      - network
+      - hardware
+      - virtual
+  register: host_probe_setup
+  changed_when: false
+
+- name: Probe 'ip -br addr'
+  ansible.builtin.command:
+    cmd: ip -br addr
+  register: host_probe_ip
+  changed_when: false
+  ignore_errors: true
+
+- name: Probe 'lsblk -J'
+  ansible.builtin.command:
+    cmd: lsblk -J
+  register: host_probe_lsblk
+  changed_when: false
+  ignore_errors: true
+
+- name: Probe 'hostnamectl'
+  ansible.builtin.command:
+    cmd: hostnamectl
+  register: host_probe_hostnamectl
+  changed_when: false
+  ignore_errors: true
+
+- name: Aggregate probe facts
+  ansible.builtin.set_fact:
+    host_probe_facts:
+      ansible_facts: "{{ host_probe_setup.ansible_facts | default({}) }}"
+      ip: "{{ host_probe_ip.stdout | default('') }}"
+      lsblk: "{{ host_probe_lsblk.stdout | default('') }}"
+      hostnamectl: "{{ host_probe_hostnamectl.stdout | default('') }}"

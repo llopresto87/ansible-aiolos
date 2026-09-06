@@ -1,0 +1,10 @@
+---
+proxmox_vm_template_vmid: 9100
+proxmox_vm_template_name: ub2404tpl-virtio
+proxmox_vm_template_storage: data
+# yamllint disable-line rule:line-length
+proxmox_vm_template_image_url: https://cloud-images.ubuntu.com/releases/24.04/release/ubuntu-24.04-server-cloudimg-amd64.img
+proxmox_vm_template_cache_dir: /var/lib/vz/cloud-images
+proxmox_vm_template_memory: 2048
+proxmox_vm_template_cores: 2
+proxmox_vm_template_net_bridge: vmbr0

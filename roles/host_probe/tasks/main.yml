@@ -1,0 +1,31 @@
+---
+# Entry point for host_probe role
+- name: Assert host_probe defaults
+  ansible.builtin.assert:
+    that:
+      - host_probe_output_root is defined
+      - host_probe_group_vars_dir is defined
+    fail_msg: "host_probe defaults missing"
+
+- name: Ensure controller output directories exist
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: '0755'
+  loop:
+    - "{{ host_probe_group_vars_dir }}"
+    - "{{ host_probe_files_dir }}"
+  delegate_to: localhost
+
+- name: Include facts collection
+  ansible.builtin.include_tasks:
+    file: collect_facts.yml
+
+- name: Include config collection (when full-scan)
+  ansible.builtin.include_tasks:
+    file: collect_configs.yml
+  when: host_probe_mode == 'full-scan'
+
+- name: Include render tasks
+  ansible.builtin.include_tasks:
+    file: render_group_vars.yml

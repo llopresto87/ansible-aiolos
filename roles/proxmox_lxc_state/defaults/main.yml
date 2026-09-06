@@ -1,0 +1,4 @@
+---
+proxmox_lxc_state_proxmox_lxc_desired_state: started
+proxmox_lxc_state_proxmox_api_user: "{{ proxmox_lxc_provision_proxmox_api_user | default('root@pam') }}"
+proxmox_lxc_state_proxmox_api_host: "{{ proxmox_lxc_provision_proxmox_api_host | default(inventory_hostname) }}"

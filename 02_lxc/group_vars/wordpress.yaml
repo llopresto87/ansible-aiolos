@@ -1,0 +1,52 @@
+---
+# WordPress LXC container - web application example with Docker Compose
+proxmox_container:
+  vmid: 212
+  container_name: wordpress
+  template_name: ubuntu-24.04-standard_24.04-2_amd64.tar.zst
+  network_bridge: vmbr0
+  storage_pool: local-btrfs
+  memory: 2048
+  cores: 2
+  disk: 12
+  swap: 512
+  features:
+    - nesting=1
+    - keyctl=1
+  lxc_conf_cleanup_patterns:
+    - '^lxc\.apparmor\.profile:'
+    - '^lxc\.apparmor\.allow_nesting:'
+    - '^lxc\.cap\.drop:'
+    - '^lxc\.cgroup2\.devices\.allow:'
+    - '^lxc\.cgroup\.devices\.allow:'
+    - '^lxc\.mount\.auto:'
+    - '^lxc\.sysctl\.net\.ipv4\.ip_unprivileged_port_start:'
+  lxc_conf_lines:
+    - 'lxc.apparmor.allow_nesting: 1'
+    - 'lxc.cgroup2.devices.allow: a'
+    - 'lxc.cap.drop:'
+    - 'lxc.mount.auto: proc:rw sys:rw'
+  ssh_public_key_path: files/ssh_keys/cluster.pub
+  ip_address: 192.0.2.26/24
+  gateway: 192.0.2.1
+  # Encrypt password with: ansible-vault encrypt_string 'yourpassword'
+  password: !vault |
+    # Run: ansible-vault encrypt_string 'your_lxc_root_password'
+    $ANSIBLE_VAULT;1.1;AES256
+    00000000000000000000000000000000000000000000000000000000000000000000000000000000
+    0000000000000000000000000000000000000000000000000000000000000000000000000000000000
+  dns: 192.0.2.11
+
+install_docker: true
+main_user: wordpress
+use_compose: true
+compose_projects:
+  - compose_file: wordpress.yaml
+    compose_directory: wordpress
+    compose_source: library
+
+proxy_publish:
+  - domain: wordpress.example.lan
+    upstream_host: wordpress.example.lan
+    upstream_port: 8080
+    upstream_scheme: http

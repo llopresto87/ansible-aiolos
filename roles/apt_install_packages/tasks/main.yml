@@ -1,0 +1,28 @@
+---
+- name: Update apt cache
+  ansible.builtin.apt:
+    update_cache: true
+
+- name: Perform full upgrade
+  ansible.builtin.apt:
+    upgrade: dist
+  when: full_upgrade is defined
+
+- name: Perform safe upgrade
+  ansible.builtin.apt:
+    upgrade: safe
+
+  when: safe_upgrade is defined
+
+# - name: Install base packages
+#   ansible.builtin.apt:
+#     name: "{{ item }}"
+#     state: present
+#   loop: "{{ apt_packages }}"
+#   when: apt_packages is defined
+
+- name: Install base packages
+  ansible.builtin.apt:
+    name: "{{ apt_packages }}"
+    state: present
+  when: apt_packages is defined

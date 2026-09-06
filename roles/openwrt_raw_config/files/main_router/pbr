@@ -1,0 +1,63 @@
+
+config include
+	option path '/usr/share/pbr/pbr.user.dnsprefetch'
+	option enabled '0'
+
+config include
+	option path '/usr/share/pbr/pbr.user.aws'
+	option enabled '0'
+
+config include
+	option path '/usr/share/pbr/pbr.user.netflix'
+	option enabled '0'
+
+config dns_policy
+	option name 'Redirect Local IP DNS'
+	option src_addr '192.168.1.5'
+	option dest_dns '1.1.1.1'
+	option enabled '0'
+
+config policy
+	option name 'Ignore Local Requests'
+	option interface 'ignore'
+	option dest_addr '10.0.0.0/24 10.0.1.0/24 192.168.100.0/24 192.168.1.0/24'
+	option enabled '0'
+
+config policy
+	option name 'Plex/Emby Local Server'
+	option interface 'wan'
+	option src_port '8096 8920 32400'
+	option enabled '0'
+
+config policy
+	option name 'Plex/Emby Remote Servers'
+	option interface 'wan'
+	option dest_addr 'plex.tv my.plexapp.com emby.media app.emby.media tv.emby.media'
+	option enabled '0'
+
+config pbr 'config'
+	option enabled '1'
+	option strict_enforcement '0'
+	list supported_interface 'vpnclient'
+	option webui_show_ignore_target '1'
+	option uplink_interface 'modem'
+	option procd_reload_delay '5'
+
+config policy 'torrentbox'
+	option name 'Torrent-Host-via-Nord'
+	option interface 'vpnclient'
+	option src_addr '192.0.2.50'
+
+config policy 'luci80'
+	option name 'Ignore-LuCI-192.0.2.1-80'
+	option interface 'ignore'
+	option dest_addr '192.0.2.1'
+	option dest_port '80'
+	option proto 'tcp'
+
+config policy 'http80'
+	option name 'HTTP-80-via-Nord'
+	option interface 'vpnclient'
+	option dest_port '80'
+	option proto 'tcp'
+

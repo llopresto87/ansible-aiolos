@@ -1,0 +1,239 @@
+---
+- name: Create generated directory for cloud-init user-data
+  ansible.builtin.file:
+    path: "{{ proxmox_vm_provision_cloudinit_local_dir }}"
+    state: directory
+    mode: '0755'
+  delegate_to: localhost
+
+- name: Set short VM name variable
+  ansible.builtin.set_fact:
+    proxmox_vm_provision_vmname: "{{ proxmox_vm_provision_proxmox_vm.name }}"
+  delegate_to: localhost
+  run_once: true
+
+- name: Set cloud-init prefix
+  ansible.builtin.set_fact:
+    proxmox_vm_provision_cloudinit_prefix: "{{ proxmox_vm_provision_cloudinit_local_dir }}/"
+  delegate_to: localhost
+  run_once: true
+
+- name: Build cloud-init destination path
+  ansible.builtin.set_fact:
+    proxmox_vm_provision_cloudinit_dest: >-
+      {{ proxmox_vm_provision_cloudinit_local_dir }}/{{ proxmox_vm_provision_vmname }}-user-data.yml
+  delegate_to: localhost
+  run_once: true
+
+- name: Render cloud-init user-data for VM
+  ansible.builtin.template:
+    src: cloud_init_user_data.j2
+    dest: "{{ proxmox_vm_provision_cloudinit_dest }}"
+    mode: '0644'
+  delegate_to: localhost
+  run_once: true
+
+- name: Note cloud-init render
+  ansible.builtin.debug:
+    msg: "Cloud-init user-data rendered to {{ proxmox_vm_provision_cloudinit_dest }}"
+
+- name: Render cloud-init meta-data for VM
+  ansible.builtin.copy:
+    dest: "{{ proxmox_vm_provision_cloudinit_local_dir }}/{{ proxmox_vm_provision_vmname }}-meta-data"
+    content: |
+      instance-id: proxmox-{{ proxmox_vm_provision_proxmox_vm.vmid | default(proxmox_vm_provision_vmname) }}
+      local-hostname: {{ proxmox_vm_provision_vmname }}
+    mode: '0644'
+  delegate_to: localhost
+  run_once: true
+
+- name: Set cloud-init meta-data path variable
+  ansible.builtin.set_fact:
+    proxmox_vm_provision_cloudinit_meta_path: >-
+      {{ proxmox_vm_provision_cloudinit_local_dir }}/{{ proxmox_vm_provision_vmname }}-meta-data
+  delegate_to: localhost
+  run_once: true
+
+- name: Set default ISO name
+  ansible.builtin.set_fact:
+    proxmox_vm_provision_cloudinit_iso_name: "{{ proxmox_vm_provision_vmname }}-cidata.iso"
+  delegate_to: localhost
+  run_once: true
+
+- name: Override ISO name from proxmox_vm_provision_proxmox_vm if provided
+  ansible.builtin.set_fact:
+    proxmox_vm_provision_cloudinit_iso_name: "{{ proxmox_vm_provision_proxmox_vm.cloud_init_user_data.iso_name }}"
+  when: proxmox_vm_provision_proxmox_vm.cloud_init_user_data.iso_name is defined
+  delegate_to: localhost
+  run_once: true
+
+- name: Build cloud-init ISO path
+  ansible.builtin.set_fact:
+    proxmox_vm_provision_cloudinit_iso_path: >-
+      generated/cloud_init_user_data/{{ proxmox_vm_provision_cloudinit_iso_name }}
+  delegate_to: localhost
+  run_once: true
+
+- name: Set default proxmox ISO storage path
+  ansible.builtin.set_fact:
+    proxmox_vm_provision_cloudinit_storage_path: "/var/lib/vz/template/iso"
+  delegate_to: localhost
+  run_once: true
+
+- name: Override cloud-init storage path when provided
+  ansible.builtin.set_fact:
+    proxmox_vm_provision_cloudinit_storage_path: >-
+      {{ proxmox_vm_provision_proxmox_vm.cloud_init_user_data.advanced.storage_path }}
+  when: proxmox_vm_provision_proxmox_vm.cloud_init_user_data.advanced.storage_path is defined
+  delegate_to: localhost
+  run_once: true
+
+- name: Check for existing ISO on controller
+  ansible.builtin.stat:
+    path: "{{ proxmox_vm_provision_cloudinit_iso_path }}"
+  register: proxmox_vm_provision_cloudinit_iso_stat
+  delegate_to: localhost
+
+- name: Check for cloud-localds
+  ansible.builtin.command:
+    argv:
+      - command
+      - -v
+      - cloud-localds
+  register: proxmox_vm_provision_cloud_localds_check
+  ignore_errors: true
+  changed_when: false
+  delegate_to: localhost
+
+- name: Check for genisoimage
+  ansible.builtin.command:
+    argv:
+      - command
+      - -v
+      - genisoimage
+  register: proxmox_vm_provision_genisoimage_check
+  ignore_errors: true
+  changed_when: false
+  delegate_to: localhost
+
+- name: Check for mkisofs
+  ansible.builtin.command:
+    argv:
+      - command
+      - -v
+      - mkisofs
+  register: proxmox_vm_provision_mkisofs_check
+  ignore_errors: true
+  changed_when: false
+  delegate_to: localhost
+
+- name: Create cloud-init ISO on controller with cloud-localds
+  ansible.builtin.command:
+    argv:
+      - cloud-localds
+      - "{{ proxmox_vm_provision_cloudinit_iso_path }}"
+      - "{{ proxmox_vm_provision_cloudinit_dest }}"
+  when:
+    - not proxmox_vm_provision_cloudinit_iso_stat.stat.exists
+    - proxmox_vm_provision_cloud_localds_check.rc == 0
+  changed_when: true
+  delegate_to: localhost
+
+- name: Create cloud-init ISO on controller with genisoimage
+  when:
+    - not proxmox_vm_provision_cloudinit_iso_stat.stat.exists
+    - proxmox_vm_provision_cloud_localds_check.rc != 0
+  delegate_to: localhost
+  block:
+    - name: Create ISO with genisoimage
+      ansible.builtin.command:
+        argv:
+          - genisoimage
+          - -output
+          - "{{ proxmox_vm_provision_cloudinit_iso_path }}"
+          - -volid
+          - cidata
+          - -joliet
+          - -rock
+          - "{{ proxmox_vm_provision_cloudinit_dest }}"
+          - "{{ proxmox_vm_provision_cloudinit_meta_path }}"
+      when: proxmox_vm_provision_genisoimage_check.rc == 0
+      changed_when: true
+
+    - name: Create ISO with mkisofs fallback
+      ansible.builtin.command:
+        argv:
+          - mkisofs
+          - -o
+          - "{{ proxmox_vm_provision_cloudinit_iso_path }}"
+          - -V
+          - cidata
+          - -r
+          - -J
+          - "{{ proxmox_vm_provision_cloudinit_dest }}"
+          - "{{ proxmox_vm_provision_cloudinit_meta_path }}"
+      when: proxmox_vm_provision_genisoimage_check.rc != 0 and proxmox_vm_provision_mkisofs_check.rc == 0
+      changed_when: true
+
+- name: Ensure destination directory exists on proxmox node
+  ansible.builtin.file:
+    path: "{{ proxmox_vm_provision_cloudinit_storage_path }}"
+    state: directory
+    mode: '0755'
+  become: true
+
+- name: Check if ISO already exists on proxmox node
+  ansible.builtin.stat:
+    path: "{{ proxmox_vm_provision_cloudinit_storage_path }}/{{ proxmox_vm_provision_cloudinit_iso_name }}"
+  register: proxmox_vm_provision_iso_stat
+
+- name: Upload cloud-init ISO to proxmox node storage
+  ansible.builtin.copy:
+    src: "{{ proxmox_vm_provision_cloudinit_iso_path }}"
+    dest: "{{ proxmox_vm_provision_cloudinit_storage_path }}/{{ proxmox_vm_provision_cloudinit_iso_name }}"
+    mode: '0644'
+  when:
+    - not proxmox_vm_provision_iso_stat.stat.exists
+  become: true
+
+- name: Cleanup local cloud-init artifacts when requested
+  when: >-
+    (proxmox_vm_provision_proxmox_vm.cloud_init_user_data.advanced.cleanup_local_iso
+    | default(proxmox_vm_provision_proxmox_vm_cloud_init_cleanup_local)) | bool
+  block:
+    - name: Remove local cloud-init ISO
+      ansible.builtin.file:
+        path: "{{ proxmox_vm_provision_cloudinit_iso_path }}"
+        state: absent
+      delegate_to: localhost
+
+    - name: Remove rendered user-data file
+      ansible.builtin.file:
+        path: "{{ proxmox_vm_provision_cloudinit_dest }}"
+        state: absent
+      delegate_to: localhost
+
+    - name: Remove rendered meta-data file
+      ansible.builtin.file:
+        path: "{{ proxmox_vm_provision_cloudinit_meta_path }}"
+        state: absent
+      delegate_to: localhost
+
+- name: Set default proxmox cloud storage short name
+  ansible.builtin.set_fact:
+    proxmox_vm_provision_pcs: local
+  run_once: true
+
+# Optional override of storage short name is not implemented here;
+# default 'local' is used. To override, set `proxmox_cloud_storage`
+# in your group_vars or host_vars before running the play.
+
+- name: Build ISO reference for VM attachment
+  ansible.builtin.set_fact:
+    proxmox_vm_provision_cloudinit_iso_ref: "iso/{{ proxmox_vm_provision_cloudinit_iso_name }},media=cdrom"
+  run_once: true
+
+- name: Set proxmox VM ide2 to uploaded cloud-init ISO
+  ansible.builtin.set_fact:
+    proxmox_vm_provision_ide2: "{{ proxmox_vm_provision_pcs }}:{{ proxmox_vm_provision_cloudinit_iso_ref }}"
+  run_once: true

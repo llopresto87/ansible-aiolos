@@ -1,0 +1,5 @@
+---
+ssh_bootstrap_key_name: "{{ ssh_key_type | default('cluster') }}"
+ssh_bootstrap_key_dir: "{{ playbook_dir }}/../files/ssh_keys"
+ssh_bootstrap_connect_timeout: 5
+ssh_bootstrap_strict_host_checking: false

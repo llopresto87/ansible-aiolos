@@ -1,0 +1,7 @@
+---
+vm_name: apache-server
+memory_mb: 2048
+disk_size_gb: 50
+disk_type: virtio
+disk_bus: virtio0
+hostname: apache-vm

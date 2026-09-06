@@ -1,0 +1,7 @@
+---
+- name: Distribute local CA trust
+  hosts: all
+  become: true
+  gather_facts: true
+  roles:
+    - local_ca_distribute

@@ -1,0 +1,7 @@
+---
+- name: Bootstrap local CA on control node
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  roles:
+    - local_ca_bootstrap

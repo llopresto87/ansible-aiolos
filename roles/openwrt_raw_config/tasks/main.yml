@@ -1,0 +1,35 @@
+---
+# openwrt_raw_config — push raw config files to the device
+# Handles both /etc/config/ UCI files and non-UCI files
+# (OpenVPN .ovpn, custom init.d scripts, etc.)
+
+- name: Validate raw config contract
+  ansible.builtin.assert:
+    that:
+      - openwrt_raw_configs is defined
+      - openwrt_raw_configs | length > 0
+    fail_msg: >-
+      openwrt_raw_configs list must be defined with at least one entry
+
+- name: Ensure target directories exist
+  ansible.builtin.file:
+    path: "{{ item.dest | dirname }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop: "{{ openwrt_raw_configs }}"
+  loop_control:
+    label: "{{ item.dest | dirname }}"
+
+- name: Push raw config files
+  ansible.builtin.copy:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: root
+    group: root
+    mode: "{{ item.mode | default('0644') }}"
+  loop: "{{ openwrt_raw_configs }}"
+  loop_control:
+    label: "{{ item.dest }}"
+  notify: Reload UCI after config push

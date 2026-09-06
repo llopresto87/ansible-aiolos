@@ -1,0 +1,121 @@
+---
+- name: Resolve nginx proxy configuration variables
+  ansible.builtin.set_fact:
+    nginx_proxy_configure_manage_routes_resolved: >-
+      {{ nginx_proxy_configure_manage_routes
+      | default(nginx_proxy_manage_routes | default(false))
+      | bool }}
+    nginx_proxy_configure_compose_directory_resolved: >-
+      {{ nginx_proxy_configure_compose_directory
+      | default(nginx_proxy_compose_directory | default('nginx_proxy')) }}
+    nginx_proxy_configure_config_directory_resolved: >-
+      {{ nginx_proxy_configure_config_directory
+      | default(nginx_proxy_config_directory | default('nginx/conf.d')) }}
+    nginx_proxy_configure_config_filename_resolved: >-
+      {{ nginx_proxy_configure_config_filename
+      | default(nginx_proxy_config_filename | default('proxy-auto.conf')) }}
+    nginx_proxy_configure_tls_cert_path_resolved: >-
+      {{ nginx_proxy_configure_tls_cert_path
+      | default(nginx_proxy_tls_cert_path
+      | default('/etc/nginx/certs/local-proxy.crt')) }}
+    nginx_proxy_configure_tls_key_path_resolved: >-
+      {{ nginx_proxy_configure_tls_key_path
+      | default(nginx_proxy_tls_key_path
+      | default('/etc/nginx/certs/local-proxy.key')) }}
+    nginx_proxy_configure_default_upstream_scheme_resolved: >-
+      {{ nginx_proxy_configure_default_upstream_scheme
+      | default(nginx_proxy_default_upstream_scheme | default('http')) }}
+    nginx_proxy_configure_default_upstream_port_resolved: >-
+      {{ nginx_proxy_configure_default_upstream_port
+      | default(nginx_proxy_default_upstream_port | default(80)) }}
+
+- name: Initialize nginx proxy route list
+  ansible.builtin.set_fact:
+    nginx_proxy_configure_routes: []
+  when: nginx_proxy_configure_manage_routes_resolved
+
+- name: Collect published proxy routes from inventory
+  ansible.builtin.set_fact:
+    nginx_proxy_configure_routes: >-
+      {{ nginx_proxy_configure_routes
+      + (hostvars[item].proxy_publish | default([])) }}
+  loop: "{{ groups['all'] | default([]) }}"
+  when: nginx_proxy_configure_manage_routes_resolved
+
+- name: Deduplicate routes by domain
+  ansible.builtin.set_fact:
+    nginx_proxy_configure_routes: >-
+      {{ nginx_proxy_configure_routes
+      | unique(attribute='domain')
+      | list }}
+  when: nginx_proxy_configure_manage_routes_resolved
+
+- name: Validate route list is not empty
+  ansible.builtin.assert:
+    that:
+      - nginx_proxy_configure_routes | length > 0
+    fail_msg: >-
+      nginx_proxy route management is enabled but no proxy_publish entries
+      were found in inventory host vars.
+  when: nginx_proxy_configure_manage_routes_resolved
+
+- name: Validate each discovered proxy route
+  ansible.builtin.assert:
+    that:
+      - item.domain is defined
+      - item.upstream_host is defined
+      - item.upstream_port is defined
+    fail_msg: >-
+      each proxy_publish item requires domain, upstream_host,
+      and upstream_port
+  loop: "{{ nginx_proxy_configure_routes }}"
+  when: nginx_proxy_configure_manage_routes_resolved
+
+- name: Build domain list for local proxy certificate
+  ansible.builtin.set_fact:
+    nginx_proxy_configure_domains: >-
+      {{ nginx_proxy_configure_routes
+      | map(attribute='domain')
+      | unique
+      | list }}
+  when: nginx_proxy_configure_manage_routes_resolved
+
+- name: Issue local certificate for nginx proxy domains
+  ansible.builtin.include_role:
+    name: local_ca_issue
+  vars:
+    local_ca_issue_domains: "{{ nginx_proxy_configure_domains }}"
+    local_ca_issue_target_directory: >-
+      /home/{{ main_user }}/{{ nginx_proxy_configure_compose_directory_resolved }}/certs
+    local_ca_issue_target_owner: "{{ main_user }}"
+    local_ca_issue_target_group: "{{ main_user }}"
+  when: nginx_proxy_configure_manage_routes_resolved
+
+- name: Ensure nginx proxy config directory exists
+  ansible.builtin.file:
+    path: >-
+      {{
+        ['/home', main_user,
+         nginx_proxy_configure_compose_directory_resolved,
+         nginx_proxy_configure_config_directory_resolved] | join('/')
+      }}
+    state: directory
+    owner: "{{ main_user }}"
+    group: "{{ main_user }}"
+    mode: "0755"
+  when: nginx_proxy_configure_manage_routes_resolved
+
+- name: Render nginx proxy route configuration
+  ansible.builtin.template:
+    src: proxy-auto.conf.j2
+    dest: >-
+      {{
+        ['/home', main_user,
+         nginx_proxy_configure_compose_directory_resolved,
+         nginx_proxy_configure_config_directory_resolved,
+         nginx_proxy_configure_config_filename_resolved] | join('/')
+      }}
+    owner: "{{ main_user }}"
+    group: "{{ main_user }}"
+    mode: "0644"
+  when: nginx_proxy_configure_manage_routes_resolved

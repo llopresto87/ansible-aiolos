@@ -1,0 +1,48 @@
+
+config interface 'loopback'
+	option device 'lo'
+	option proto 'static'
+	option ipaddr '127.0.0.1'
+	option netmask '255.0.0.0'
+
+config globals 'globals'
+	option packet_steering '1'
+	option steering_flows '128'
+
+config device
+	option name 'br-lan'
+	option type 'bridge'
+	list ports 'eth0'
+	option macaddr 'XX:XX:XX:XX:XX:XX'
+
+config interface 'lan'
+	option device 'br-lan'
+	option proto 'static'
+	option netmask '255.255.255.0'
+	option ipaddr '192.0.2.1'
+	list dns '1.1.1.1'
+	option ipv6 '0'
+	option ip6assign '0'
+
+config device
+	option name 'eth0'
+	option mtu '1440'
+
+config device
+	option name 'usb0'
+	option mtu '1440'
+
+config interface 'modem'
+	option proto 'mbim'
+	option device '/dev/cdc-wdm0'
+	option apn 'internet.example.com'
+	option auth 'none'
+	option pdptype 'ipv4v6'
+	option multipath 'off'
+
+config interface 'vpnclient'
+	option proto 'none'
+	option device 'tun0'
+	option force_link '1'
+	option multipath 'off'
+

@@ -1,0 +1,21 @@
+---
+- name: Ensure main user exists
+  ansible.builtin.user:
+    name: "{{ main_user }}"
+    state: present
+  when: main_user is defined
+
+- name: Generate and install SSH keypair for main user (if needed)
+  ansible.builtin.include_role:
+    name: ssh_user_keygen
+  when: main_user is defined
+
+- name: Add main user to docker group
+  ansible.builtin.user:
+    name: "{{ main_user }}"
+    groups: docker
+    append: true
+  register: guest_user_bootstrap_main_user_docker_group
+  when:
+    - main_user is defined
+    - install_docker | default(false) | bool

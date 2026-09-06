@@ -1,0 +1,6 @@
+---
+# pihole role defaults — backward-compatibility dispatcher only.
+# DNS and blocklist defaults live in pihole_dns and pihole_blocklist roles.
+
+# Task selector: 'dns_records' or 'blocklist_update'
+pihole_task: dns_records

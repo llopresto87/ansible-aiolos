@@ -1,0 +1,5 @@
+---
+# compose_secret_generate defaults
+
+# Directory for storing generated secrets on the control node
+compose_secret_generate_storage_dir: "{{ playbook_dir }}/../../tmp"

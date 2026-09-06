@@ -1,0 +1,3 @@
+---
+# systemd_manager defaults
+# managed_services: []  # list of {name, enabled, state} from group_vars

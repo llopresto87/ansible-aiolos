@@ -1,0 +1,41 @@
+---
+- name: Install docker engine packages (Debian)
+  block:
+    - name: Detect installable docker packages (Debian)
+      ansible.builtin.command:
+        cmd: "apt-cache show {{ item }}"
+      loop: "{{ guest_docker_engine_guest_docker_packages }}"
+      register: guest_docker_engine_debian_package_policy
+      failed_when: false
+      changed_when: false
+      check_mode: false
+
+    - name: Build available docker package list (Debian)
+      ansible.builtin.set_fact:
+        guest_docker_engine_debian_available_packages: >-
+          {{
+            guest_docker_engine_debian_package_policy.results
+            | selectattr('rc', 'equalto', 0)
+            | map(attribute='item')
+            | list
+          }}
+
+    - name: Assert docker.io is available (Debian)
+      ansible.builtin.assert:
+        that:
+          - "'docker.io' in guest_docker_engine_debian_available_packages"
+        fail_msg: >-
+          docker.io package is not available on this host.
+          Ensure apt repositories are configured before running guest_docker_engine.
+
+    - name: Install available docker engine packages (Debian)
+      ansible.builtin.apt:
+        name: "{{ guest_docker_engine_debian_available_packages }}"
+        state: present
+        update_cache: true
+
+    - name: Ensure Docker service is enabled and started (Debian)
+      ansible.builtin.systemd:
+        name: docker
+        enabled: true
+        state: started

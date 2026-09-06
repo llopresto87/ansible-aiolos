@@ -1,0 +1,9 @@
+---
+local_ca_bootstrap_enabled: true
+local_ca_bootstrap_storage_dir: "{{ playbook_dir }}/generated/pki"
+local_ca_bootstrap_key_path: "{{ local_ca_bootstrap_storage_dir }}/local-ca.key"
+local_ca_bootstrap_cert_path: "{{ local_ca_bootstrap_storage_dir }}/local-ca.crt"
+local_ca_bootstrap_subject: "/CN=homelab-local-root-ca"
+local_ca_bootstrap_days: 3650
+local_ca_bootstrap_key_size: 4096
+local_ca_bootstrap_force_rotate: false

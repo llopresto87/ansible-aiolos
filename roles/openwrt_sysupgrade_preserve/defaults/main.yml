@@ -1,0 +1,3 @@
+---
+# openwrt_sysupgrade_preserve defaults
+# openwrt_sysupgrade_preserve: []  # list of paths to preserve across sysupgrade

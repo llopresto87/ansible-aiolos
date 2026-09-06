@@ -1,0 +1,3 @@
+---
+# openwrt_packages defaults
+# openwrt_packages: []  # list of packages from group_vars

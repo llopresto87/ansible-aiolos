@@ -1,0 +1,12 @@
+---
+- name: Update Debian trust store
+  ansible.builtin.command: update-ca-certificates
+  changed_when: false
+
+- name: Update RedHat trust store
+  ansible.builtin.command: update-ca-trust extract
+  changed_when: false
+
+- name: Update OpenWrt trust store
+  ansible.builtin.command: update-ca-certificates
+  changed_when: false

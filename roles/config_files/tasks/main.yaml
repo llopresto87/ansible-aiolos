@@ -1,0 +1,4 @@
+---
+- name: Update config files from scratch
+  ansible.builtin.import_tasks: config_files_from_scratch.yaml
+  when: send_config_from_scratch is defined

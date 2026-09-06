@@ -1,0 +1,31 @@
+---
+- name: Install packages on all hosts
+  hosts: all
+  become: true
+  tasks:
+    - name: Resolve package list
+      ansible.builtin.set_fact:
+        resolved_package_list: >-
+          {{ package_list | default(packets | default([])) }}
+
+    - name: Warn when using legacy packets variable
+      ansible.builtin.debug:
+        msg: >-
+          packets is deprecated; prefer package_list for manual package
+          operations.
+      when:
+        - package_list is not defined
+        - packets is defined
+
+    - name: Validate package list variable
+      ansible.builtin.assert:
+        that:
+          - resolved_package_list | length > 0
+        fail_msg: >-
+          Define package_list (preferred) or packets with at least
+          one package
+
+    - name: Install packages
+      ansible.builtin.package:
+        name: "{{ resolved_package_list }}"
+        state: present

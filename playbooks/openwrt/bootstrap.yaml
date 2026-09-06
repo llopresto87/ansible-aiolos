@@ -1,0 +1,33 @@
+---
+# Bootstrap an OpenWrt device after factory reset or fresh flash.
+# Connects with password auth to the factory IP, installs python3,
+# sets network config, deploys SSH key, and reboots.
+#
+# Usage:
+#   ansible-playbook -i 04_openwrt/inventory.ini \
+#     playbooks/openwrt/bootstrap.yaml
+
+- name: Bootstrap OpenWrt device from factory state
+  hosts: all
+  gather_facts: false
+  vars:
+    ansible_password: "{{ openwrt_device.root_password }}"
+    ansible_host: "{{ openwrt_device.factory_ip }}"
+    ansible_ssh_common_args: >-
+      -o StrictHostKeyChecking=no
+      -o UserKnownHostsFile=/dev/null
+  roles:
+    - openwrt_bootstrap
+
+- name: Distribute local CA trust after bootstrap
+  hosts: all
+  gather_facts: false
+  vars:
+    ansible_host: "{{ openwrt_device.ip_address }}"
+    local_ca_distribute_target_os_family: openwrt
+  pre_tasks:
+    - name: Wait for OpenWrt host after bootstrap reboot
+      ansible.builtin.wait_for_connection:
+        timeout: 300
+  roles:
+    - local_ca_distribute

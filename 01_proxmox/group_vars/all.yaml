@@ -1,0 +1,27 @@
+---
+# Optional bootstrap variables:
+# - bootstrap_key_name: name of the public/private key pair under
+#   files/ssh_keys/ (default: cluster)
+# - bootstrap_password: (vaulted) password used only for initial
+#   bootstrap fallback when key-based auth is not yet available.
+#
+# The initialization playbook will try key-based auth first (using
+# `ansible_ssh_private_key_file` or `bootstrap_key_name`) and will fall
+# back to `bootstrap_password` (requires `sshpass` on the control node)
+# if provided. This lets both key and password credentials coexist in
+# group_vars without manual switching.
+
+ansible_connection: ssh
+ansible_user: root
+ansible_ssh_private_key_file: "files/ssh_keys/cluster"
+# Generate your SSH keypair and place it under files/ssh_keys/
+
+# Proxmox API credentials (used by provisioning roles and playbooks)
+proxmox_api_user: root@pam
+
+# Optional: control-node directory to store generated keys (recommended
+# outside the repo). Example:
+# ssh_key_store_dir: /var/lib/ansible/ssh_keys
+# Optional: path to vault password file used to encrypt generated private
+# keys automatically. Example:
+# vault_password_file: ./ansible_password

@@ -1,0 +1,17 @@
+---
+- name: Set Proxmox base configuration
+  hosts: all
+  become: true
+  gather_facts: false
+  pre_tasks:
+    - name: Wait for SSH connection
+      ansible.builtin.wait_for_connection:
+        timeout: 300
+  roles:
+    - proxmox_apt_repositories
+    - proxmox_base_packages
+    - local_ca_distribute
+    - proxmox_i915_power
+    - proxmox_vfio
+    - proxmox_network_interfaces
+    - proxmox_cpu_governor

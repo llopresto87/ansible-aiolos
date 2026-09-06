@@ -1,0 +1,22 @@
+---
+local_ca_issue_enabled: true
+local_ca_issue_run_bootstrap: true
+local_ca_issue_force_rotate: false
+
+local_ca_issue_domains: []
+local_ca_issue_days: 825
+local_ca_issue_key_size: 2048
+
+local_ca_issue_storage_dir: "{{ playbook_dir }}/generated/pki"
+local_ca_issue_root_key_path: "{{ local_ca_issue_storage_dir }}/local-ca.key"
+local_ca_issue_root_cert_path: "{{ local_ca_issue_storage_dir }}/local-ca.crt"
+local_ca_issue_leaf_key_path: "{{ local_ca_issue_storage_dir }}/{{ inventory_hostname }}-proxy.key"
+local_ca_issue_leaf_csr_path: "{{ local_ca_issue_storage_dir }}/{{ inventory_hostname }}-proxy.csr"
+local_ca_issue_leaf_cert_path: "{{ local_ca_issue_storage_dir }}/{{ inventory_hostname }}-proxy.crt"
+local_ca_issue_leaf_san_path: "{{ local_ca_issue_storage_dir }}/{{ inventory_hostname }}-proxy-san.ext"
+
+local_ca_issue_target_directory: ""
+local_ca_issue_target_owner: root
+local_ca_issue_target_group: root
+local_ca_issue_target_cert_path: "{{ local_ca_issue_target_directory }}/local-proxy.crt"
+local_ca_issue_target_key_path: "{{ local_ca_issue_target_directory }}/local-proxy.key"

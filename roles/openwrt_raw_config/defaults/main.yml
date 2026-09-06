@@ -1,0 +1,3 @@
+---
+# openwrt_raw_config defaults
+# openwrt_raw_configs: []  # list of {src, dest} from group_vars

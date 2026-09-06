@@ -1,0 +1,9 @@
+# Managed by Ansible — openwrt_sysupgrade_preserve role
+# Files and directories listed here are preserved during sysupgrade
+# in addition to defaults from /lib/upgrade/keep.d/.
+#
+# WARNING: Removing entries may cause the device to become unreachable
+# after upgrade or lose custom configuration.
+{% for path in openwrt_sysupgrade_preserve %}
+{{ path }}
+{% endfor %}

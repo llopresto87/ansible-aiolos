@@ -1,0 +1,10 @@
+---
+- name: Manage Pi-hole DNS records
+  ansible.builtin.include_role:
+    name: pihole_dns
+  when: (pihole_task | default('dns_records')) == 'dns_records'
+
+- name: Manage Pi-hole blocklists
+  ansible.builtin.include_role:
+    name: pihole_blocklist
+  when: (pihole_task | default('dns_records')) == 'blocklist_update'

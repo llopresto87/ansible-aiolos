@@ -1,0 +1,14 @@
+---
+- name: Reboot all servers
+  hosts: all
+  gather_facts: true
+  pre_tasks:
+    - name: Wait for SSH connection
+      ansible.builtin.wait_for_connection:
+        timeout: 300
+  tasks:
+    - name: Reboot the server
+      ansible.builtin.reboot:
+        reboot_timeout: 600
+      when:
+        - ansible_os_family in ["Debian", "RedHat"]

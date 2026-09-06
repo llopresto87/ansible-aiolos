@@ -1,0 +1,14 @@
+---
+# LXC container inventory - example configuration
+# Each group maps to a host_vars file and targets a Proxmox node
+all:
+  children:
+    example:
+      hosts:
+        pve0:
+          ansible_host: pve0.example.lan
+
+    wordpress:
+      hosts:
+        pve0:
+          ansible_host: pve0.example.lan

@@ -1,0 +1,47 @@
+---
+# Generic VM destroy and recreate playbook.
+# Usage:
+#   ansible-playbook -i 02_vm/inventory.yaml \
+#     -l <vm_group> playbooks/proxmox/destroy_and_create_vm.yaml
+#
+# VM contracts are auto-loaded from 02_vm/group_vars/<vm_group>.yaml.
+# Each contract defines proxmox_vm_provision_proxmox_vm with sizing,
+# network, and cloud-init fields — no manual -e @ injection needed.
+
+- name: Destroy and recreate VM from inventory contract
+  hosts: all
+  serial: 1
+  gather_facts: false
+  become: false
+  tasks:
+    - name: Validate VM contract is loaded from group_vars
+      ansible.builtin.assert:
+        that:
+          - proxmox_vm_provision_proxmox_vm is defined
+          - proxmox_vm_provision_proxmox_vm.vmid is defined
+          - proxmox_vm_provision_proxmox_vm.node is defined
+        fail_msg: >-
+          No VM contract found. Ensure 02_vm/group_vars/<group>.yaml
+          defines proxmox_vm_provision_proxmox_vm with vmid and node.
+
+    - name: Destroy existing VM (idempotent)
+      community.proxmox.proxmox_kvm:
+        api_user: "{{ proxmox_api_user }}"
+        api_password: "{{ proxmox_api_password }}"
+        api_host: "{{ ansible_host }}"
+        node: "{{ proxmox_vm_provision_proxmox_vm.node }}"
+        vmid: "{{ proxmox_vm_provision_proxmox_vm.vmid }}"
+        state: absent
+        force: true
+      connection: local
+      register: _destroy_result
+      failed_when:
+        - _destroy_result is failed
+        - "'does not exist' not in (_destroy_result.msg | default(''))"
+        - "'not found' not in (_destroy_result.msg | default('') | lower)"
+
+    - name: Recreate VM from contract
+      ansible.builtin.include_role:
+        name: proxmox_vm_provision
+      vars:
+        proxmox_vm_provision_wait_for_ssh: true

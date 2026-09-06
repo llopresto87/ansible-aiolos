@@ -1,0 +1,18 @@
+---
+- name: Install CA certificates package (Debian)
+  ansible.builtin.apt:
+    name: ca-certificates
+    state: present
+    update_cache: true
+
+- name: Copy local CA certificate (Debian)
+  ansible.builtin.copy:
+    src: "{{ local_ca_distribute_source_cert_path }}"
+    dest: "{{ local_ca_distribute_debian_cert_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Update Debian trust store
+  when:
+    - not ansible_check_mode
+      or (local_ca_distribute_source_cert_stat.stat.exists | default(false))

@@ -1,0 +1,10 @@
+---
+# pihole_blocklist role defaults
+
+# Path to the pihole group_vars file containing the servers[] list.
+pihole_blocklist_group_vars_path: "{{ playbook_dir }}/../03_applications/group_vars/pihole.yaml"
+
+# Directories to scan for container definitions containing IP assignments.
+pihole_blocklist_container_scan_paths:
+  - "{{ playbook_dir }}/../02_lxc/group_vars"
+  - "{{ playbook_dir }}/../01_proxmox/group_vars"

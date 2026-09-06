@@ -1,0 +1,6 @@
+---
+ssh_hardening_ssh_service_name: >-
+  {{ 'sshd' if (ansible_os_family | default('Debian')) == 'RedHat'
+     else 'ssh' }}
+ssh_hardening_disable_ssh_password: true
+ssh_hardening_key_dir: "{{ playbook_dir }}/../files/ssh_keys"

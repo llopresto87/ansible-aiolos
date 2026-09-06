@@ -1,0 +1,31 @@
+---
+# compose_library — data-only role providing pre-built compose files
+# and templates for use by guest_compose_deploy.
+#
+# This role does not execute tasks directly. It serves as a library
+# of compose files (files/) and config templates (templates/) that
+# guest_compose_deploy references via compose_source: library.
+#
+# Available compose files:
+#   - balancer.yaml      (nginx LLM load balancer)
+#   - coredns.yml        (CoreDNS resolver)
+#   - immich.yaml        (Immich photo library)
+#   - jc21.yaml          (nginx-proxy-manager)
+#   - ollama.yaml        (Ollama model server)
+#   - ollama_web_ui.yaml (Open-WebUI interface)
+#
+# Available config directories:
+#   - coredns/     (CoreDNS config files)
+#   - immich/      (Immich environment files)
+#   - nginx/       (nginx configuration)
+#
+# Available templates:
+#   - Corefile            (CoreDNS Corefile with DNS forwarding)
+#   - docker_compose.yaml.j2 (generic compose template from vars)
+
+- name: Compose library loaded
+  ansible.builtin.debug:
+    msg: >-
+      compose_library is a data-only role. Use guest_compose_deploy
+      with compose_source: library to deploy files from this library.
+    verbosity: 1

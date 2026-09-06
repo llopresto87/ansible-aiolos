@@ -1,0 +1,71 @@
+---
+- name: Determine ssh key name
+  ansible.builtin.set_fact:
+    ssh_authorized_keys_ssh_key_name: >-
+      {{ ssh_authorized_keys_ssh_key_name
+         | default(ssh_key_type | default('cluster')) }}
+
+- name: Ensure public key file exists on control node
+  ansible.builtin.set_fact:
+    ssh_authorized_keys_pubkey_path: >-
+      {{ ssh_authorized_keys_key_dir }}/{{
+      ssh_authorized_keys_ssh_key_name }}.pub
+
+- name: Stat public key file on control node
+  ansible.builtin.stat:
+    path: "{{ ssh_authorized_keys_pubkey_path }}"
+  register: ssh_authorized_keys_pubkey_file
+  delegate_to: localhost
+  changed_when: false
+
+- name: Fail when public key is missing
+  ansible.builtin.fail:
+    msg: >-
+      Public key {{ ssh_authorized_keys_pubkey_path }} not found on control node
+  when: not ssh_authorized_keys_pubkey_file.stat.exists
+
+- name: Ensure root .ssh directory exists
+  ansible.builtin.file:
+    path: /root/.ssh
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Install public key for root
+  ansible.posix.authorized_key:
+    user: root
+    key: "{{ lookup('file', ssh_authorized_keys_pubkey_path) }}"
+    state: present
+    manage_dir: true
+
+- name: Ensure main user exists
+  ansible.builtin.user:
+    name: "{{ main_user }}"
+    state: present
+  when: main_user is defined
+
+- name: Ensure main user .ssh directory exists
+  ansible.builtin.file:
+    path: "/home/{{ main_user }}/.ssh"
+    state: directory
+    owner: "{{ main_user }}"
+    group: "{{ main_user }}"
+    mode: "0700"
+  when: main_user is defined
+
+- name: Install public key for main user
+  ansible.builtin.set_fact:
+    ssh_authorized_keys_user_pubkey_path: >-
+      {{ ssh_authorized_keys_key_dir }}/{{
+      ssh_user_keygen_ssh_user_key
+      | default(ssh_authorized_keys_ssh_key_name) }}.pub
+  when: main_user is defined
+
+- name: Install public key for main user
+  ansible.posix.authorized_key:
+    user: "{{ main_user }}"
+    key: "{{ lookup('file', ssh_authorized_keys_user_pubkey_path) }}"
+    state: present
+    manage_dir: true
+  when: main_user is defined

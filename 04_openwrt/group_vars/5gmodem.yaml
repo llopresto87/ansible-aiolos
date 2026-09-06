@@ -1,0 +1,36 @@
+---
+# 5G Modem — minimal config for initial retrieval
+# Located at 192.0.2.1
+
+ansible_host: 192.0.2.1
+ansible_password: !vault |
+          $ANSIBLE_VAULT;1.1;AES256
+          00000000000000000000000000000000000000000000000000000000000000000000000000000000
+          0000000000000000000000000000000000000000000000000000000000000000000000000000000000
+
+openwrt_device:
+  hostname: 5gmodem
+  factory_ip: 192.168.1.1
+  ip_address: 192.0.2.1
+  netmask: 255.255.255.0
+  role: router
+  arch: aarch64_cortex-a72
+  target: bcm27xx/bcm2711
+
+openwrt_ssh:
+  ssh_key_type: infrastructure
+  disable_password_auth: false
+
+openwrt_packages: []
+
+openwrt_raw_configs:
+  - src: 5gmodem/network
+    dest: /etc/config/network
+  - src: 5gmodem/firewall
+    dest: /etc/config/firewall
+  - src: 5gmodem/wireless
+    dest: /etc/config/wireless
+  - src: 5gmodem/system
+    dest: /etc/config/system
+  - src: 5gmodem/dhcp
+    dest: /etc/config/dhcp

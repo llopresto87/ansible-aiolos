@@ -1,0 +1,19 @@
+---
+# Full reprovision of an OpenWrt device after sysupgrade.
+# Assumes python3 is already installed (run bootstrap first if not).
+# Deploys SSH keys, installs packages, pushes all configs, enables services.
+#
+# Usage:
+#   ansible-playbook -i 04_openwrt/inventory.ini \
+#     playbooks/openwrt/reprovision.yaml
+
+- name: Reprovision OpenWrt device
+  hosts: all
+  gather_facts: false
+  roles:
+    - openwrt_sshkey
+    - openwrt_packages
+    - local_ca_distribute
+    - openwrt_raw_config
+    - openwrt_services
+    - openwrt_sysupgrade_preserve

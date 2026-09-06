@@ -1,0 +1,13 @@
+---
+version: '3.8'
+services:
+  ollama:
+    environment:
+      - OLLAMA_PULL_MODELS=gemma3n:e2b
+
+    image: ollama/ollama
+    ports:
+      - "11434:11434"  # Maps port 11434 on the host to port 11434 on the container
+    volumes:
+      - ./ollama:/home/okama/ollama/.ollama  # Ensure this directory exists
+    restart: unless-stopped

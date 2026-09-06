@@ -1,0 +1,30 @@
+---
+# openwrt_packages — install packages via apk (OpenWrt 25.12+)
+# Handles official repos and notes for external/sideloaded packages.
+
+- name: Validate package contract
+  ansible.builtin.assert:
+    that:
+      - openwrt_packages is defined
+      - openwrt_packages | length > 0
+    fail_msg: >-
+      openwrt_packages list must be defined with at least one package
+
+- name: Update apk package index
+  ansible.builtin.command: apk update
+  changed_when: false
+
+- name: Install packages from official repos
+  community.general.apk:
+    name: "{{ openwrt_packages }}"
+    state: present
+    update_cache: false
+  register: openwrt_packages_result
+
+- name: Report external packages requiring manual sideload
+  ansible.builtin.debug:
+    msg: >-
+      External package '{{ item.name }}' is not in official repos.
+      {{ item.note | default('Install manually via .apk sideload.') }}
+  loop: "{{ openwrt_packages_external | default([]) }}"
+  when: openwrt_packages_external is defined

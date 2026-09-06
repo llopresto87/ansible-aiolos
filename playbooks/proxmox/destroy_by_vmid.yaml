@@ -1,0 +1,32 @@
+---
+- name: Destroy all vmids in the inventory on the Proxmox Host
+  hosts: all
+  become: true
+  tasks:
+    - name: Ask for user confirmation
+      ansible.builtin.pause:
+        prompt: "This task will stop and remove LXC containers from Proxmox. Are you sure you want to proceed? (yes/no)"
+      register: confirmation
+      failed_when: confirmation.user_input != 'yes'
+
+    - name: Stop LXC containers on Proxmox
+      community.proxmox.proxmox:
+        vmid: "{{ item }}"
+        node: "{{ ansible_host }}"
+        api_user: "{{ proxmox_api_user }}"
+        api_password: "{{ proxmox_api_password }}"
+        api_host: "{{ ansible_host }}"
+        state: stopped
+      with_items: "{{ proxmox_container.vmid }}"
+      when: proxmox_container.vmid is defined
+
+    - name: Remove stopped LXC containers from Proxmox
+      community.proxmox.proxmox:
+        vmid: "{{ item }}"
+        node: "{{ ansible_host }}"
+        api_user: "{{ proxmox_api_user }}"
+        api_password: "{{ proxmox_api_password }}"
+        api_host: "{{ ansible_host }}"
+        state: absent
+      with_items: "{{ proxmox_container.vmid }}"
+      when: proxmox_container.vmid is defined

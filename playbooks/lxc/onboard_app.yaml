@@ -1,0 +1,56 @@
+---
+# Generic application onboarding playbook.
+# Usage:
+#   ansible-playbook -i 03_applications/inventory.ini \
+#     -l <app_group> playbooks/lxc/onboard_app.yaml
+#
+# This playbook:
+#   1. Configures the target app host (packages, CA trust, docker, compose)
+#   2. Issues a local TLS cert for the app's proxy_publish domains on the app host
+#   3. Re-converges nginx_proxy to pick up new routes and issue its own certs
+#   4. Updates Pi-hole DNS so the FQDN resolves to the nginx proxy IP
+#
+# The --limit selects which app group(s) to onboard. nginx_proxy and pihole
+# are always included automatically in plays 2-3 regardless of limit.
+
+- name: "Configure application host"
+  hosts: all
+  become: true
+  roles:
+    - contract_validation
+    - guest_base_packages
+    - local_ca_distribute
+    - guest_docker_engine
+    - guest_user_bootstrap
+    - compose_secret_generate
+    - guest_compose_deploy
+    - guest_compose_converge
+  tasks:
+    - name: Issue local TLS certificate for app published domains
+      ansible.builtin.include_role:
+        name: local_ca_issue
+      vars:
+        local_ca_issue_domains: >-
+          {{ proxy_publish | default([]) | map(attribute='domain') | list }}
+        local_ca_issue_target_directory: "/home/{{ main_user }}/certs"
+        local_ca_issue_target_owner: "{{ main_user }}"
+        local_ca_issue_target_group: "{{ main_user }}"
+      when:
+        - proxy_publish is defined
+        - proxy_publish | length > 0
+        - main_user is defined
+
+- name: "Reconcile nginx proxy routes for all applications"
+  hosts: nginx_proxy
+  become: true
+  roles:
+    - contract_validation
+    - guest_compose_deploy
+    - nginx_proxy_configure
+    - guest_compose_converge
+
+- name: "Update Pi-hole DNS to include new app FQDN"
+  hosts: pihole
+  become: true
+  roles:
+    - pihole_dns

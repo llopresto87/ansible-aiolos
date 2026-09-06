@@ -1,0 +1,13 @@
+---
+# pihole_dns role defaults
+
+# Automatically include inventory hosts in rendered DNS list.
+pihole_dns_merge_inventory_hosts: true
+
+# Automatically include proxy-published domains and map them to the
+# configured proxy group IP.
+pihole_dns_merge_proxy_domains: true
+pihole_dns_proxy_group: nginx_proxy
+
+# If an inventory host is not a FQDN, append this suffix.
+pihole_dns_default_domain_suffix: example.lan

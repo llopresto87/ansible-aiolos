@@ -1,0 +1,22 @@
+---
+- name: Prepare a unified variable structure
+  ansible.builtin.set_fact:
+    config_files_final_config_list: >-
+      {{ config_files_final_config_list | default([]) +
+         [{'name': (item | dict2items | first).key,
+           'data': (item | dict2items | first).value}] }}
+  loop: "{{ send_config_from_scratch }}"
+
+- name: Ensure directories for config files exist
+  ansible.builtin.file:
+    path: "{{ item.data.file | dirname }}"
+    state: directory
+    mode: "0755"
+  loop: "{{ config_files_final_config_list }}"
+
+- name: Create configuration files from config_files_final_config_list
+  ansible.builtin.copy:
+    dest: "{{ item.data.file }}"
+    content: "{{ item.data.with_config | join('\n') }}\n"
+    mode: "{{ item.data.permissions | default('0644') }}"
+  loop: "{{ config_files_final_config_list }}"

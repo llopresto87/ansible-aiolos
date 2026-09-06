@@ -1,0 +1,5 @@
+---
+- name: Update DNS list
+  hosts: all
+  roles:
+    - pihole_dns

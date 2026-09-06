@@ -1,0 +1,122 @@
+---
+- name: Rebuild nginx VM and target app VM from contracts
+  hosts: "{{ proxmox_control_group | default('pve0_example_lan') }}"
+  gather_facts: false
+  become: false
+  vars:
+    nginx_vm_contract_file: "{{ playbook_dir }}/../../02_vm/group_vars/nginx_proxy_vm.yaml"
+    app_secret_specs: []
+    app_secret_dir: "{{ playbook_dir }}/../../tmp/secrets"
+  pre_tasks:
+    - name: Validate required app rebuild variables
+      ansible.builtin.assert:
+        that:
+          - app_vm_contract_file is defined
+          - app_vm_contract_file | length > 0
+          - app_inventory_group is defined
+          - app_inventory_group | length > 0
+        fail_msg: >-
+          Define app_vm_contract_file and app_inventory_group.
+
+    - name: Ensure app secret directory exists
+      ansible.builtin.file:
+        path: "{{ app_secret_dir }}"
+        state: directory
+        mode: "0700"
+      delegate_to: localhost
+      run_once: true
+      when: app_secret_specs | length > 0
+
+    - name: Initialize generated app secret map
+      ansible.builtin.set_fact:
+        rebuild_vm_app_secret_values: {}
+      delegate_to: localhost
+      run_once: true
+
+    - name: Generate or reuse app secrets
+      ansible.builtin.set_fact:
+        rebuild_vm_app_secret_values: >-
+          {{ rebuild_vm_app_secret_values | combine({
+            item.var_name: lookup(
+              'ansible.builtin.password',
+              app_secret_dir ~ '/' ~ item.var_name | lower,
+              chars=item.chars | default(['ascii_letters', 'digits']),
+              length=item.length | default(40)
+            )
+          }) }}
+      delegate_to: localhost
+      run_once: true
+      loop: "{{ app_secret_specs }}"
+      no_log: true
+
+  tasks:
+    - name: Load nginx VM contract
+      ansible.builtin.include_vars:
+        file: "{{ nginx_vm_contract_file }}"
+        name: nginx_vm_contract
+
+    - name: Load app VM contract
+      ansible.builtin.include_vars:
+        file: "{{ app_vm_contract_file }}"
+        name: app_vm_contract
+
+    - name: Remove nginx and app VMs for clean rebuild
+      community.proxmox.proxmox_kvm:
+        api_user: "{{ proxmox_api_user }}"
+        api_password: "{{ proxmox_api_password }}"
+        api_host: "{{ ansible_host }}"
+        node: "{{ item.node }}"
+        vmid: "{{ item.vmid }}"
+        state: absent
+      loop:
+        - "{{ nginx_vm_contract.proxmox_vm_provision_proxmox_vm }}"
+        - "{{ app_vm_contract.proxmox_vm_provision_proxmox_vm }}"
+      connection: local
+
+    - name: Create nginx VM from contract
+      ansible.builtin.include_role:
+        name: proxmox_vm_provision
+      vars:
+        proxmox_vm_provision_proxmox_vm: "{{ nginx_vm_contract.proxmox_vm_provision_proxmox_vm }}"
+        proxmox_vm_provision_wait_for_ssh: true
+
+    - name: Create app VM from contract
+      ansible.builtin.include_role:
+        name: proxmox_vm_provision
+      vars:
+        proxmox_vm_provision_proxmox_vm: "{{ app_vm_contract.proxmox_vm_provision_proxmox_vm }}"
+        proxmox_vm_provision_wait_for_ssh: true
+
+- name: Configure rebuilt nginx VM runtime
+  hosts: nginx_proxy
+  gather_facts: true
+  become: true
+  roles:
+    - guest_base_packages
+    - local_ca_distribute
+    - guest_docker_engine
+    - guest_user_bootstrap
+    - contract_validation
+    - guest_compose_deploy
+    - nginx_proxy_configure
+    - guest_compose_converge
+
+- name: Configure rebuilt app VM runtime
+  hosts: "{{ app_inventory_group | default('ungrouped') }}"
+  gather_facts: true
+  become: true
+  pre_tasks:
+    - name: Propagate generated app secrets as host vars
+      ansible.builtin.set_fact:
+        "{{ item.key }}": "{{ item.value }}"
+      loop: "{{ hostvars['localhost'].rebuild_vm_app_secret_values | default({}) | dict2items }}"
+      no_log: true
+  roles:
+    - guest_base_packages
+    - local_ca_distribute
+    - guest_docker_engine
+    - guest_user_bootstrap
+    - contract_validation
+    - guest_compose_deploy
+    - nginx_proxy_configure
+    - guest_compose_converge

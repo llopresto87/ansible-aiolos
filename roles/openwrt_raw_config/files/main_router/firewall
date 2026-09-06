@@ -1,0 +1,258 @@
+
+config defaults
+	option output 'ACCEPT'
+	option synflood_protect '1'
+	option input 'DROP'
+	option forward 'ACCEPT'
+	option drop_invalid '1'
+
+config zone
+	option name 'lan'
+	option input 'ACCEPT'
+	option output 'ACCEPT'
+	option forward 'ACCEPT'
+	list network 'lan'
+
+config zone
+	option name 'wan'
+	option output 'ACCEPT'
+	option masq '1'
+	option mtu_fix '1'
+	option input 'DROP'
+	option forward 'ACCEPT'
+	list network 'modem'
+	list network 'vpnclient'
+
+config forwarding
+	option src 'lan'
+	option dest 'wan'
+
+config rule
+	option name 'Allow-DHCP-Renew'
+	option src 'wan'
+	option proto 'udp'
+	option dest_port '68'
+	option target 'ACCEPT'
+	option family 'ipv4'
+
+config rule
+	option name 'Allow-Ping'
+	option src 'wan'
+	option proto 'icmp'
+	option family 'ipv4'
+	option target 'DROP'
+	list icmp_type 'echo-request'
+
+config rule
+	option name 'Allow-IGMP'
+	option src 'wan'
+	option proto 'igmp'
+	option family 'ipv4'
+	option target 'ACCEPT'
+
+config rule
+	option name 'Allow-DHCPv6'
+	option src 'wan'
+	option proto 'udp'
+	option dest_port '546'
+	option family 'ipv6'
+	option target 'ACCEPT'
+
+config rule
+	option name 'Allow-MLD'
+	option src 'wan'
+	option proto 'icmp'
+	option src_ip 'fe80::/10'
+	list icmp_type '130/0'
+	list icmp_type '131/0'
+	list icmp_type '132/0'
+	list icmp_type '143/0'
+	option family 'ipv6'
+	option target 'ACCEPT'
+	option enabled '0'
+
+config rule
+	option name 'Allow-ICMPv6-Input'
+	option src 'wan'
+	option proto 'icmp'
+	list icmp_type 'echo-request'
+	list icmp_type 'echo-reply'
+	list icmp_type 'destination-unreachable'
+	list icmp_type 'packet-too-big'
+	list icmp_type 'time-exceeded'
+	list icmp_type 'bad-header'
+	list icmp_type 'unknown-header-type'
+	list icmp_type 'router-solicitation'
+	list icmp_type 'neighbour-solicitation'
+	list icmp_type 'router-advertisement'
+	list icmp_type 'neighbour-advertisement'
+	option limit '1000/sec'
+	option family 'ipv6'
+	option target 'ACCEPT'
+
+config rule
+	option name 'Allow-ICMPv6-Forward'
+	option src 'wan'
+	option dest '*'
+	option proto 'icmp'
+	list icmp_type 'echo-request'
+	list icmp_type 'echo-reply'
+	list icmp_type 'destination-unreachable'
+	list icmp_type 'packet-too-big'
+	list icmp_type 'time-exceeded'
+	list icmp_type 'bad-header'
+	list icmp_type 'unknown-header-type'
+	option limit '1000/sec'
+	option family 'ipv6'
+	option target 'ACCEPT'
+
+config rule
+	option name 'Allow-IPSec-ESP'
+	option src 'wan'
+	option dest 'lan'
+	option proto 'esp'
+	option target 'ACCEPT'
+	option enabled '0'
+
+config rule
+	option name 'Allow-ISAKMP'
+	option src 'wan'
+	option dest 'lan'
+	option dest_port '500'
+	option proto 'udp'
+	option target 'ACCEPT'
+	option enabled '0'
+
+config rule
+	option name '[IPv6] [ANY] to [DEVICE] - ALL - DROP'
+	option family 'ipv6'
+	option src '*'
+	list proto 'all'
+	option target 'DROP'
+
+config rule
+	option name '[IPv6] [ANY] to [ANY] - ALL - DROP'
+	option family 'ipv6'
+	option src '*'
+	option dest '*'
+	list proto 'all'
+	option target 'DROP'
+
+config rule
+	option name 'DNS and ICMP'
+	list proto 'tcp'
+	list proto 'udp'
+	option set_dscp 'AF43'
+	option target 'DSCP'
+	option src_port '53 853 5353'
+	option src '*'
+	option enabled '0'
+
+config rule
+	option name 'Egress-DNS-ICMP'
+	list proto 'tcp'
+	list proto 'udp'
+	option set_dscp 'AF43'
+	option target 'DSCP'
+	option dest_port '53 853 5353'
+	option src 'wan'
+	option dest 'lan'
+	option enabled '0'
+
+config rule
+	option name 'Egress-League-of-Legends'
+	list proto 'udp'
+	option set_dscp 'AF41'
+	option target 'DSCP'
+	option dest_port '5000-5500 8393-8400'
+	option src 'wan'
+	option dest 'lan'
+	option enabled '0'
+
+config rule
+	option name 'Egress-CSGO'
+	list proto 'udp'
+	option set_dscp 'AF41'
+	option target 'DSCP'
+	option dest_port '27015-27030'
+	option src 'wan'
+	option dest 'lan'
+	option enabled '0'
+
+config rule
+	option name 'League of Legends'
+	list proto 'udp'
+	option set_dscp 'AF41'
+	option target 'DSCP'
+	option src_port '5000-5500 8393-8400'
+	option src 'wan'
+	option dest 'lan'
+	option enabled '0'
+
+config rule
+	option name 'CS:GO'
+	list proto 'udp'
+	option set_dscp 'AF41'
+	option target 'DSCP'
+	option src_port '27015-27030'
+	option src 'wan'
+	option dest 'lan'
+	option enabled '0'
+
+config rule
+	option name 'Egress-HTTPS'
+	list proto 'tcp'
+	list proto 'udp'
+	option set_dscp 'AF21'
+	option target 'DSCP'
+	option dest_port '443'
+	option src 'wan'
+	option dest 'lan'
+	option enabled '0'
+
+config rule
+	option name 'HTTPS'
+	list proto 'tcp'
+	list proto 'udp'
+	option set_dscp 'AF21'
+	option target 'DSCP'
+	option src_port '443'
+	option src 'wan'
+	option dest 'lan'
+	option enabled '0'
+
+config rule
+	option name 'Egress-BitTorrent'
+	list proto 'tcp'
+	list proto 'udp'
+	option set_dscp 'AF11'
+	option target 'DSCP'
+	option dest_port '6881-6889 6969 1337 6960-6969 6881'
+	option src 'wan'
+	option dest 'lan'
+	option enabled '0'
+
+config rule
+	option name 'BitTorrent'
+	list proto 'tcp'
+	list proto 'udp'
+	option set_dscp 'AF11'
+	option target 'DSCP'
+	option src_port '6881-6889 6969 1337 6960-6969 6881'
+	option src 'wan'
+	option dest 'lan'
+	option enabled '0'
+
+config rule
+	option name 'Default-Low-Priority'
+	list proto 'all'
+	option set_dscp 'BE'
+	option target 'DSCP'
+	option src '*'
+	option dest '*'
+	option enabled '0'
+
+config include
+	option path '/etc/firewall.user'
+	option reload '1'
+

@@ -1,0 +1,35 @@
+---
+- name: Ensure VFIO kernel modules are present
+  ansible.builtin.lineinfile:
+    path: /etc/modules
+    line: "{{ item }}"
+    state: present
+  loop: "{{ proxmox_vfio_modules }}"
+  register: proxmox_vfio_modules_state
+  when: proxmox_vfio_enabled | default(false) | bool
+
+- name: Configure GRUB kernel parameters for VFIO
+  ansible.builtin.lineinfile:
+    path: /etc/default/grub
+    regexp: "^GRUB_CMDLINE_LINUX_DEFAULT="
+    line: >-
+      GRUB_CMDLINE_LINUX_DEFAULT="{{
+      proxmox_vfio_proxmox_grub_cmdline_linux_default }}"
+  register: proxmox_vfio_grub
+  when: proxmox_vfio_enabled | default(false) | bool
+
+- name: Rebuild initramfs after VFIO changes
+  ansible.builtin.command:
+    cmd: update-initramfs -u -k all
+  changed_when: true
+  when:
+    - proxmox_vfio_enabled | default(false) | bool
+    - proxmox_vfio_modules_state is changed or proxmox_vfio_grub is changed
+
+- name: Update grub after VFIO changes
+  ansible.builtin.command:
+    cmd: update-grub
+  changed_when: true
+  when:
+    - proxmox_vfio_enabled | default(false) | bool
+    - proxmox_vfio_modules_state is changed or proxmox_vfio_grub is changed

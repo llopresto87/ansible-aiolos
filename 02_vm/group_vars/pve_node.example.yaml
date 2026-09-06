@@ -1,0 +1,35 @@
+---
+# VM definitions for pve3
+proxmox_vms:
+  - node: pve3
+    vmid: 210
+    name: wordpress-pve3
+    memory: 2048
+    cores: 2
+    sockets: 1
+    scsi0: local-lvm:32
+    net0: virtio,bridge=vmbr0
+    ostype: l26
+    ciuser: ansible
+    cipassword: !vault |
+          $ANSIBLE_VAULT;1.1;AES256
+          00000000000000000000000000000000000000000000000000000000000000000000000000000000
+          0000000000000000000000000000000000000000000000000000000000000000000000000000000000
+    ssh_public_key_path: files/ssh_keys/standard.pub
+    ssh_private_key_path: files/ssh_keys/standard
+    cloud_init_user_data:
+      enabled: true
+      packages:
+        - curl
+        - apt-transport-https
+      runcmd:
+        - echo "cloud-init finished"
+    post_provision:
+      install_base_packages: true
+      install_docker: true
+      deploy_compose: true
+      compose_projects:
+        - compose_directory: wordpress
+          compose_source: library
+          compose_file: wordpress.yaml
+          main_user: ansible
